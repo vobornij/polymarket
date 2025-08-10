@@ -1,0 +1,83 @@
+# OS/Editor
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+*.orig
+.history/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Packaging / build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Caches & tooling
+.cache/
+.mypy_cache/
+.pytest_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+pytestdebug.log
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Data (keep large/raw data out of git)
+data/
+
+# Logs
+logs/
+*.log
+src/logs/
+
+# IDE / Project settings
+.vscode/
+.idea/
+*.iml
+*.sublime-project
+*.sublime-workspace
+.vscode-test/
+
+# Java/Kotlin/Gradle (in case of mixed projects)
+.gradle/
+.idea_modules/
+out/
+target/
+*.class
+
+# Credentials & secrets
+.env
+.env.*
+.envrc
+.secrets/
+secrets.*
+credentials.*
+*.pem
+*.key
+*.p12
