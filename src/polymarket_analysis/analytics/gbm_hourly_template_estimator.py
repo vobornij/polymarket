@@ -131,7 +131,7 @@ class GBMParameterHourlyTemplateEstimator:
         result_hourly_df = pd.DataFrame(result_hourly)
         
         # Apply additional smoothing to hourly template
-        window_size_hourly = 1  # 6 hour window for hourly smoothing
+        window_size_hourly = 1
         result_hourly_df['log_return_std_rolling'] = result_hourly_df['log_return_std']
         
         self.hourly_template = result_hourly_df

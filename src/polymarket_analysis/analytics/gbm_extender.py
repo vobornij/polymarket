@@ -33,6 +33,13 @@ class GbmExtender:
             #         polymarket_history.contract.price_range, 
             #         (polymarket_history.contract.target_time - row['timestamp']).total_seconds() / (24 * 3600)
             #     )
+            hours_ahead=(polymarket_history.contract.target_time - row['timestamp']).total_seconds() / (24 * 3600)
+            if hours_ahead <= 0:
+                if(polymarket_history.contract.outcome == "Yes"):
+                    return 1
+                elif(polymarket_history.contract.outcome == "No"):
+                    return 0
+
             p = self.gbm.p_between_targets(
                 current_time=row['timestamp'],
                 current_price=row['btc_price'], 
