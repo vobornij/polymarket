@@ -8,7 +8,7 @@ from polymarket_analysis.data.binance import Binance
 import math
 
 class GBMParameterHourlyTemplateEstimator:
-    def __init__(self, data_file_path: str = "/Users/kate/projects/polymarket/data/btc_5min_data.json"):
+    def __init__(self, data_file_path: str = "/Users/vobornij/projects/polymarket/data/btc_5min_data.json"):
         """
         Initialize the GBM Parameter Hourly Template Estimator.
         This estimator builds templates from 5-minute data but aggregates them into hourly templates
