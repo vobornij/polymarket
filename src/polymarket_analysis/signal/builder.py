@@ -72,10 +72,17 @@ def build_wallet_profiles(
     size_lists: dict[str, list[float]] = defaultdict(list)
     entry_price_lists: dict[str, list[float]] = defaultdict(list)
 
-    columns = [
-        "wallet", "condition_id", "outcome", "dt",
-        "side", "quantity", "usdc_amount", "price",
-    ]
+    _schema_names = set(dataset.schema.names)
+    if "total_quantity" in _schema_names:
+        columns = [
+            "wallet", "condition_id", "outcome", "dt",
+            "side", "total_quantity", "trade_value_usdc", "avg_price",
+        ]
+    else:
+        columns = [
+            "wallet", "condition_id", "outcome", "dt",
+            "side", "quantity", "usdc_amount", "price",
+        ]
 
     for batch in dataset.to_batches(columns=columns, batch_size=batch_size):
         df: pd.DataFrame = batch.to_pandas()
@@ -257,11 +264,19 @@ def build_signal_events(
     selected_wallet_set = set(wallet_profiles["wallet"])
     chunks: list[pd.DataFrame] = []
 
-    columns = [
-        "wallet", "condition_id", "dt", "side", "outcome",
-        "quantity", "price", "usdc_amount",
-        "trade_pnl", "token_winner", "final_price",
-    ]
+    _schema_names = set(dataset.schema.names)
+    if "total_quantity" in _schema_names:
+        columns = [
+            "wallet", "condition_id", "dt", "side", "outcome",
+            "total_quantity", "avg_price", "trade_value_usdc",
+            "trade_pnl", "token_winner", "final_price",
+        ]
+    else:
+        columns = [
+            "wallet", "condition_id", "dt", "side", "outcome",
+            "quantity", "price", "usdc_amount",
+            "trade_pnl", "token_winner", "final_price",
+        ]
     if tx_hash_column is not None:
         columns.append(tx_hash_column)
 
@@ -369,10 +384,18 @@ def verify_partial_fill_grouping(
 
     Returns a small diagnostic DataFrame.
     """
-    columns = [
-        "wallet", "condition_id", "outcome", "dt", "side",
-        "quantity", "price", "usdc_amount", "position",
-    ]
+    _schema_names = set(dataset.schema.names)
+    _is_grouped_schema = "total_quantity" in _schema_names
+    if _is_grouped_schema:
+        columns = [
+            "wallet", "condition_id", "outcome", "dt", "side",
+            "total_quantity", "avg_price", "trade_value_usdc",
+        ]
+    else:
+        columns = [
+            "wallet", "condition_id", "outcome", "dt", "side",
+            "quantity", "price", "usdc_amount", "position",
+        ]
     sample = None
     for batch in dataset.to_batches(columns=columns, batch_size=batch_size):
         df: pd.DataFrame = batch.to_pandas()
@@ -390,13 +413,19 @@ def verify_partial_fill_grouping(
     raw_dupe_rows = int(sample.duplicated(keys, keep=False).sum())
     grouped_dupe_rows = int(grouped.duplicated(keys, keep=False).sum())
 
-    raw_signed_qty = np.where(
-        sample["side"] == "BUY", sample["quantity"], -sample["quantity"]
-    )
-    raw_prev_pos = sample["position"] - raw_signed_qty
-    raw_open_buys = int(
-        ((sample["side"] == "BUY") & (raw_prev_pos <= 1e-9)).sum()
-    )
+    if _is_grouped_schema:
+        # Dataset is already grouped; raw == grouped, no fill-level position available
+        raw_open_buys = int(
+            ((grouped["side"] == "BUY") & (grouped["prev_position"] <= 1e-9)).sum()
+        )
+    else:
+        raw_signed_qty = np.where(
+            sample["side"] == "BUY", sample["quantity"], -sample["quantity"]
+        )
+        raw_prev_pos = sample["position"] - raw_signed_qty
+        raw_open_buys = int(
+            ((sample["side"] == "BUY") & (raw_prev_pos <= 1e-9)).sum()
+        )
     grouped_open_buys = int(
         ((grouped["side"] == "BUY") & (grouped["prev_position"] <= 1e-9)).sum()
     )

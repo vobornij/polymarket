@@ -142,6 +142,16 @@ def cohort_selection_sweep(
         (train_a_df["open_buy_trades"] >= 10) & (train_a_df["volume"] >= 250)
     ].copy()
 
+    if eligible_a.empty:
+        raise ValueError(
+            "cohort_selection_sweep: no wallets in train_a pass the eligibility filter "
+            "(open_buy_trades >= 10 AND volume >= 250).  "
+            f"train_a has {len(train_a_df)} rows; "
+            f"max open_buy_trades={train_a_df['open_buy_trades'].max() if len(train_a_df) else 'N/A'}, "
+            f"max volume={train_a_df['volume'].max() if len(train_a_df) else 'N/A'}.  "
+            "Check that TRAIN_A_END_DATE captures a sufficient amount of trading data."
+        )
+
     rows = []
     for metric in metrics:
         ranked = (

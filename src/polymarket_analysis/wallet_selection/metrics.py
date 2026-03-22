@@ -42,7 +42,12 @@ def _new_wallet_stat() -> dict:
 
 
 def aggregate_wallet_trades(df: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate partial fills into one row per (wallet, condition_id, outcome, dt, side).
+    """Aggregate trades into one row per (wallet, condition_id, outcome, dt, side).
+
+    Accepts both fill-level data (columns ``quantity``, ``price``, ``usdc_amount``)
+    and pre-grouped transaction-level data (columns ``total_quantity``, ``avg_price``,
+    ``trade_value_usdc``).  The latter is normalised to the canonical names before
+    aggregation so that downstream metric code is uniform.
 
     Computes a volume-weighted average price and running position from the
     cumulative signed quantity.  The ``prev_position`` column reflects the
@@ -51,8 +56,8 @@ def aggregate_wallet_trades(df: pd.DataFrame) -> pd.DataFrame:
     Parameters
     ----------
     df:
-        Raw fill-level rows.  Must contain:
-        ``wallet, condition_id, outcome, dt, side, quantity, price, usdc_amount``
+        Trade rows.  Must contain one of the two column sets described above,
+        plus ``wallet, condition_id, outcome, dt, side``.
 
     Returns
     -------
@@ -62,15 +67,25 @@ def aggregate_wallet_trades(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df.copy()
 
+    work = df.copy()
+
+    # Normalise grouped-schema column names to fill-level names so the rest of
+    # the function is uniform regardless of which schema the caller provides.
+    if "total_quantity" in work.columns and "quantity" not in work.columns:
+        work = work.rename(columns={
+            "total_quantity": "quantity",
+            "avg_price": "price",
+            "trade_value_usdc": "usdc_amount",
+        })
+
     required = [
         "wallet", "condition_id", "outcome", "dt", "side",
         "quantity", "price", "usdc_amount",
     ]
-    missing = [c for c in required if c not in df.columns]
+    missing = [c for c in required if c not in work.columns]
     if missing:
         raise ValueError(f"Missing required columns for aggregation: {missing}")
 
-    work = df.copy()
     work["quantity"] = work["quantity"].astype(float)
     work["usdc_amount"] = work["usdc_amount"].astype(float)
     work["price_x_qty"] = work["price"].astype(float) * work["quantity"]
@@ -294,11 +309,22 @@ def compute_wallet_skill_workspace(
         days=recency_days
     )
 
-    columns = [
-        "wallet", "condition_id", "outcome", "dt", "side",
-        "quantity", "price", "usdc_amount",
-        "trade_pnl", "final_price", "token_winner",
-    ]
+    # Accept both fill-level names (quantity/price/usdc_amount) and the
+    # pre-grouped names (total_quantity/avg_price/trade_value_usdc) that
+    # stage0 now writes.  aggregate_wallet_trades() normalises either set.
+    _schema_names = set(dataset.schema.names)
+    if "total_quantity" in _schema_names:
+        columns = [
+            "wallet", "condition_id", "outcome", "dt", "side",
+            "total_quantity", "avg_price", "trade_value_usdc",
+            "trade_pnl", "final_price", "token_winner",
+        ]
+    else:
+        columns = [
+            "wallet", "condition_id", "outcome", "dt", "side",
+            "quantity", "price", "usdc_amount",
+            "trade_pnl", "final_price", "token_winner",
+        ]
 
     for batch in dataset.to_batches(columns=columns, batch_size=batch_size):
         df: pd.DataFrame = batch.to_pandas()

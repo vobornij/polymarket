@@ -107,7 +107,7 @@ def plot_cumulative_pnl_by_wallet(
     Parameters
     ----------
     buckets_full:
-        Hourly bucket DataFrame with columns ``wallet``, ``time_col``, ``pnl``.
+        Hourly bucket DataFrame with columns ``wallet``, ``time_col``, ``trade_pnl``.
     top_wallets:
         List of wallet addresses to include (e.g. top 20 by training PnL).
     split_date:
@@ -122,7 +122,7 @@ def plot_cumulative_pnl_by_wallet(
         .sort_values(["wallet", time_col])
         .copy()
     )
-    plot_df["cumulative_pnl"] = plot_df.groupby("wallet")["pnl"].cumsum()
+    plot_df["cumulative_pnl"] = plot_df.groupby("wallet")["trade_pnl"].cumsum()
 
     fig = px.line(
         plot_df,
@@ -152,18 +152,15 @@ def plot_wallet_selection_pnl(
     wallet_cohorts: dict[str, pd.DataFrame],
     *,
     split_date: pd.Timestamp | None = None,
-    top_n_individual: int = 20,
-    title: str = "Wallet selection — cumulative PnL over time",
+    period: str = "both",
+    title: str = "Wallet selection — cohort cumulative PnL over time",
     bucket_freq: str = "1D",
 ) -> go.Figure:
-    """Two-panel figure for all wallet-selection cohorts.
+    """Single-panel aggregate PnL figure — one line per cohort.
 
-    Panel 1 — individual lines for the top-*top_n_individual* wallets of each
-    cohort, coloured by cohort.  Useful for spotting a few stars vs. the field.
-
-    Panel 2 — one aggregate cumulative PnL line per cohort (sum of all wallets
-    in that cohort).  The train/test split is marked with a vertical dashed line
-    in both panels.
+    Each line shows the cumulative sum of ``trade_pnl`` across **all** wallets
+    in that cohort.  In ``"both"`` mode the test-period portion is reset to
+    start from zero at the split boundary (same as the train portion).
 
     Parameters
     ----------
@@ -172,12 +169,20 @@ def plot_wallet_selection_pnl(
         ``trade_pnl``, ``is_train``.
     wallet_cohorts:
         ``{cohort_name → DataFrame(wallet, wallet_quality)}`` as produced by
-        :func:`~wallet_selection.selector.build_wallet_cohorts`.  An optional
-        extra key ``"volatility"`` is handled the same way.
+        :func:`~wallet_selection.selector.build_wallet_cohorts`.
     split_date:
         Train/test boundary timestamp.  Derived from ``df_fills`` when omitted.
-    top_n_individual:
-        How many top wallets (by total PnL in training) to show in panel 1.
+    period:
+        Which portion of the data to plot.  One of:
+
+        * ``"train"``  — only rows where ``dt < split_date``; cumulative PnL
+          starts from zero at the first training bucket.
+        * ``"test"``   — only rows where ``dt >= split_date``; cumulative PnL
+          starts from zero at the first test bucket.
+        * ``"both"``   — all rows; test portion is reset to start from zero;
+          a vertical dashed train/test split line is drawn.
+
+        Defaults to ``"both"``.
     title:
         Figure title.
     bucket_freq:
@@ -185,9 +190,10 @@ def plot_wallet_selection_pnl(
 
     Returns
     -------
-    ``go.Figure`` with two sub-plots.
+    ``go.Figure`` with a single cohort-aggregate panel.
     """
-    from plotly.subplots import make_subplots
+    if period not in ("train", "test", "both"):
+        raise ValueError(f"period must be 'train', 'test', or 'both'; got {period!r}")
 
     # ── derive split_date from data if not supplied ──────────────────────────
     if split_date is None:
@@ -200,21 +206,19 @@ def plot_wallet_selection_pnl(
     df["dt"] = pd.to_datetime(df["dt"], utc=True)
     df["bucket"] = df["dt"].dt.floor(bucket_freq)
 
+    # Filter to the requested period before building aggregates
+    if period == "train" and split_date is not None:
+        df = df[df["bucket"] < split_date]
+    elif period == "test" and split_date is not None:
+        df = df[df["bucket"] >= split_date]
+
     all_wallets = list({w for c in wallet_cohorts.values() for w in c["wallet"]})
-    df_sel = df[df["wallet"].isin(all_wallets)][["wallet", "bucket", "pnl"]].copy()
+    df_sel = df[df["wallet"].isin(all_wallets)][["wallet", "bucket", "trade_pnl"]].copy()
 
     daily = (
-        df_sel.groupby(["wallet", "bucket"], sort=True)["pnl"]
+        df_sel.groupby(["wallet", "bucket"], sort=True)["trade_pnl"]
         .sum()
         .reset_index()
-    )
-
-    # ── pre-compute per-wallet total train PnL for ranking ───────────────────
-    train_pnl = (
-        df[df["is_train"] & df["wallet"].isin(all_wallets)]
-        .groupby("wallet")["pnl"]
-        .sum()
-        .rename("train_pnl")
     )
 
     # ── colour palette — one colour per cohort ───────────────────────────────
@@ -225,82 +229,27 @@ def plot_wallet_selection_pnl(
     cohort_names = list(wallet_cohorts.keys())
     cohort_color = {name: palette[i % len(palette)] for i, name in enumerate(cohort_names)}
 
-    fig = make_subplots(
-        rows=2,
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.10,
-        subplot_titles=["Individual top wallets", "Cohort total PnL"],
-    )
+    fig = go.Figure()
 
     for cohort_name, cohort_df in wallet_cohorts.items():
         color = cohort_color[cohort_name]
         wallets_in_cohort = set(cohort_df["wallet"])
 
-        # rank by train PnL, pick top_n_individual
-        ranked = (
-            train_pnl[train_pnl.index.isin(wallets_in_cohort)]
-            .sort_values(ascending=False)
-        )
-        top_wallets = list(ranked.head(top_n_individual).index)
-
-        # ── panel 1: individual lines ─────────────────────────────────────
-        ind_df = (
-            daily[daily["wallet"].isin(top_wallets)]
-            .sort_values(["wallet", "bucket"])
-            .copy()
-        )
-        ind_df["cum_pnl"] = ind_df.groupby("wallet")["pnl"].cumsum()
-        # post-split: restart cumulation from 0 (pre-split segment untouched)
-        if split_date is not None:
-            split_offset = (
-                ind_df[ind_df["bucket"] < split_date]
-                .groupby("wallet")["cum_pnl"]
-                .last()
-                .rename("split_offset")
-            )
-            ind_df = ind_df.join(split_offset, on="wallet")
-            ind_df["split_offset"] = ind_df["split_offset"].fillna(0.0)
-            post = ind_df["bucket"] >= split_date
-            ind_df.loc[post, "cum_pnl"] = ind_df.loc[post, "cum_pnl"] - ind_df.loc[post, "split_offset"]
-
-        show_legend = True
-        for wallet in top_wallets:
-            w_df = ind_df[ind_df["wallet"] == wallet]
-            if w_df.empty:
-                continue
-            short = wallet[:6] + "…" + wallet[-4:]
-            fig.add_trace(
-                go.Scatter(
-                    x=w_df["bucket"],
-                    y=w_df["cum_pnl"],
-                    mode="lines",
-                    line={"color": color, "width": 1},
-                    opacity=0.55,
-                    name=cohort_name,
-                    legendgroup=cohort_name,
-                    showlegend=show_legend,
-                    hovertemplate=f"{short}<br>%{{x|%Y-%m-%d}}<br>cum PnL: %{{y:.1f}} USDC<extra></extra>",
-                ),
-                row=1,
-                col=1,
-            )
-            show_legend = False  # only first trace shows in legend
-
-        # ── panel 2: cohort aggregate ─────────────────────────────────────
         agg_df = (
             daily[daily["wallet"].isin(wallets_in_cohort)]
-            .groupby("bucket", sort=True)["pnl"]
+            .groupby("bucket", sort=True)["trade_pnl"]
             .sum()
             .reset_index()
         )
-        agg_df["cum_pnl"] = agg_df["pnl"].cumsum()
-        # post-split: restart cumulation from 0 (pre-split segment untouched)
-        if split_date is not None and not agg_df.empty:
+        agg_df["cum_pnl"] = agg_df["trade_pnl"].cumsum()
+
+        # In "both" mode reset test-period cumulation to start from 0
+        if period == "both" and split_date is not None and not agg_df.empty:
             pre_split = agg_df.loc[agg_df["bucket"] < split_date, "cum_pnl"]
-            split_offset = pre_split.iloc[-1] if not pre_split.empty else 0.0
+            split_offset = float(pre_split.iloc[-1]) if not pre_split.empty else 0.0
             post = agg_df["bucket"] >= split_date
             agg_df.loc[post, "cum_pnl"] = agg_df.loc[post, "cum_pnl"] - split_offset
+
         if not agg_df.empty:
             fig.add_trace(
                 go.Scatter(
@@ -309,24 +258,20 @@ def plot_wallet_selection_pnl(
                     mode="lines",
                     line={"color": color, "width": 2},
                     name=cohort_name,
-                    legendgroup=cohort_name,
-                    showlegend=False,
-                    hovertemplate=f"{cohort_name}<br>%{{x|%Y-%m-%d}}<br>cum PnL: %{{y:.1f}} USDC<extra></extra>",
-                ),
-                row=2,
-                col=1,
+                    hovertemplate=(
+                        f"{cohort_name}<br>%{{x|%Y-%m-%d}}<br>"
+                        "cum PnL: %{y:.1f} USDC<extra></extra>"
+                    ),
+                )
             )
 
-    # ── split-date vlines ────────────────────────────────────────────────────
-    if split_date is not None:
-        for panel_row in (1, 2):
-            fig.add_vline(
-                x=split_date,
-                line_dash="dash",
-                line_color="black",
-                row=panel_row,
-                col=1,
-            )
+    # ── split-date vline in "both" mode ─────────────────────────────────────
+    if period == "both" and split_date is not None:
+        fig.add_vline(
+            x=split_date,
+            line_dash="dash",
+            line_color="black",
+        )
         fig.add_annotation(
             x=split_date,
             y=1.01,
@@ -338,10 +283,187 @@ def plot_wallet_selection_pnl(
 
     fig.update_layout(
         template="plotly_white",
-        height=750,
+        height=450,
         title=title,
+        xaxis_title="Date",
         yaxis_title="Cumulative PnL (USDC)",
-        yaxis2_title="Cumulative PnL (USDC)",
+        legend_title="Cohort",
+    )
+    return fig
+
+
+def plot_wallet_individual_pnl(
+    df_fills: pd.DataFrame,
+    wallet_cohorts: dict[str, pd.DataFrame],
+    *,
+    split_date: pd.Timestamp | None = None,
+    top_n_individual: int = 20,
+    title: str = "Individual wallet cumulative PnL (train + test)",
+    bucket_freq: str = "1D",
+) -> go.Figure:
+    """Per-wallet cumulative PnL lines spanning train **and** test periods.
+
+    Each wallet is shown as a thin line coloured by cohort membership.  The
+    train/test boundary is marked with a vertical dashed line.  Wallet address
+    labels are drawn at the right-hand end of each line.
+
+    The test-period portion of each wallet's cumulative PnL is reset to start
+    from zero at the split boundary (so train and test performance are visually
+    independent).
+
+    Parameters
+    ----------
+    df_fills:
+        Fill-level trade DataFrame.  Must contain at least: ``wallet``, ``dt``,
+        ``trade_pnl``, ``is_train``.
+    wallet_cohorts:
+        ``{cohort_name → DataFrame(wallet, wallet_quality)}``.
+    split_date:
+        Train/test boundary timestamp.  Derived from ``df_fills`` when omitted.
+    top_n_individual:
+        Number of top wallets per cohort (ranked by training PnL) to display.
+    title:
+        Figure title.
+    bucket_freq:
+        Pandas offset alias for time bucketing (default ``'1D'`` = daily).
+
+    Returns
+    -------
+    ``go.Figure``.
+    """
+    # ── derive split_date ────────────────────────────────────────────────────
+    if split_date is None:
+        tmp = df_fills[df_fills["is_train"]]
+        if not tmp.empty:
+            split_date = pd.Timestamp(tmp["dt"].max()).normalize() + pd.Timedelta(days=1)
+
+    # ── bucket all data ──────────────────────────────────────────────────────
+    df = df_fills.copy()
+    df["dt"] = pd.to_datetime(df["dt"], utc=True)
+    df["bucket"] = df["dt"].dt.floor(bucket_freq)
+
+    all_wallets = list({w for c in wallet_cohorts.values() for w in c["wallet"]})
+    df_sel = df[df["wallet"].isin(all_wallets)][["wallet", "bucket", "trade_pnl"]].copy()
+
+    daily = (
+        df_sel.groupby(["wallet", "bucket"], sort=True)["trade_pnl"]
+        .sum()
+        .reset_index()
+    )
+
+    # ── rank wallets by training PnL ─────────────────────────────────────────
+    train_mask = df_fills["is_train"] & df_fills["wallet"].isin(all_wallets)
+    train_pnl = (
+        df_fills[train_mask]
+        .assign(dt=lambda d: pd.to_datetime(d["dt"], utc=True))
+        .groupby("wallet")["trade_pnl"]
+        .sum()
+        .rename("train_pnl")
+    )
+
+    # ── colour palette ───────────────────────────────────────────────────────
+    palette = [
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+        "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
+    ]
+    cohort_names = list(wallet_cohorts.keys())
+    cohort_color = {name: palette[i % len(palette)] for i, name in enumerate(cohort_names)}
+
+    fig = go.Figure()
+    legend_shown: set[str] = set()
+
+    for cohort_name, cohort_df in wallet_cohorts.items():
+        color = cohort_color[cohort_name]
+        wallets_in_cohort = set(cohort_df["wallet"])
+
+        ranked = (
+            train_pnl[train_pnl.index.isin(wallets_in_cohort)]
+            .sort_values(ascending=False)
+        )
+        top_wallets = list(ranked.head(top_n_individual).index)
+
+        ind_df = (
+            daily[daily["wallet"].isin(top_wallets)]
+            .sort_values(["wallet", "bucket"])
+            .copy()
+        )
+        ind_df["cum_pnl"] = ind_df.groupby("wallet")["trade_pnl"].cumsum()
+
+        # Reset test-period cumulation to start from 0 at the split boundary
+        if split_date is not None:
+            split_offset = (
+                ind_df[ind_df["bucket"] < split_date]
+                .groupby("wallet")["cum_pnl"]
+                .last()
+                .rename("split_offset")
+            )
+            ind_df = ind_df.join(split_offset, on="wallet")
+            ind_df["split_offset"] = ind_df["split_offset"].fillna(0.0)
+            post = ind_df["bucket"] >= split_date
+            ind_df.loc[post, "cum_pnl"] = (
+                ind_df.loc[post, "cum_pnl"] - ind_df.loc[post, "split_offset"]
+            )
+
+        for wallet in top_wallets:
+            w_df = ind_df[ind_df["wallet"] == wallet].copy()
+            if w_df.empty:
+                continue
+            short = wallet[:6] + "…" + wallet[-4:]
+            show_legend = cohort_name not in legend_shown
+            if show_legend:
+                legend_shown.add(cohort_name)
+
+            # Line trace
+            fig.add_trace(
+                go.Scatter(
+                    x=w_df["bucket"],
+                    y=w_df["cum_pnl"],
+                    mode="lines",
+                    line={"color": color, "width": 1},
+                    opacity=0.6,
+                    name=cohort_name,
+                    legendgroup=cohort_name,
+                    showlegend=show_legend,
+                    hovertemplate=(
+                        f"{short} ({cohort_name})<br>%{{x|%Y-%m-%d}}<br>"
+                        "cum PnL: %{y:.1f} USDC<extra></extra>"
+                    ),
+                )
+            )
+
+            # Label at the right end of the line
+            last_row = w_df.iloc[-1]
+            fig.add_annotation(
+                x=last_row["bucket"],
+                y=last_row["cum_pnl"],
+                text=short,
+                showarrow=False,
+                xanchor="left",
+                font={"size": 8, "color": color},
+            )
+
+    # ── split-date vline ─────────────────────────────────────────────────────
+    if split_date is not None:
+        fig.add_vline(
+            x=split_date,
+            line_dash="dash",
+            line_color="black",
+        )
+        fig.add_annotation(
+            x=split_date,
+            y=1.01,
+            yref="paper",
+            text="train / test split",
+            showarrow=False,
+            font={"size": 11},
+        )
+
+    fig.update_layout(
+        template="plotly_white",
+        height=600,
+        title=title,
+        xaxis_title="Date",
+        yaxis_title="Cumulative PnL (USDC)",
         legend_title="Cohort",
     )
     return fig
@@ -375,7 +497,7 @@ def plot_combined_cumulative_pnl(
         .sort_values(time_col)
         .copy()
     )
-    plot_df["cumulative_pnl"] = plot_df["pnl"].cumsum()
+    plot_df["cumulative_pnl"] = plot_df["trade_pnl"].cumsum()
 
     fig = px.line(
         plot_df,
