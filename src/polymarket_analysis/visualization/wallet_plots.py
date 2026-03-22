@@ -154,7 +154,7 @@ def plot_wallet_selection_pnl(
     split_date: pd.Timestamp | None = None,
     period: str = "both",
     title: str = "Wallet selection — cohort cumulative PnL over time",
-    bucket_freq: str = "1D",
+    bucket_freq: str = "1h",
 ) -> go.Figure:
     """Single-panel aggregate PnL figure — one line per cohort.
 
@@ -243,23 +243,29 @@ def plot_wallet_selection_pnl(
         )
         agg_df["cum_pnl"] = agg_df["trade_pnl"].cumsum()
 
-        # In "both" mode reset test-period cumulation to start from 0
         if period == "both" and split_date is not None and not agg_df.empty:
+            # Reset test-period cumulation to start from 0
             pre_split = agg_df.loc[agg_df["bucket"] < split_date, "cum_pnl"]
             split_offset = float(pre_split.iloc[-1]) if not pre_split.empty else 0.0
             post = agg_df["bucket"] >= split_date
             agg_df.loc[post, "cum_pnl"] = agg_df.loc[post, "cum_pnl"] - split_offset
 
         if not agg_df.empty:
+            # Prepend an explicit (anchor_time, 0) point so the line always
+            # starts at zero regardless of the PnL in the first bucket.
+            anchor_time = split_date if (period == "test" and split_date is not None) else agg_df["bucket"].iloc[0]
+            zero_row = pd.DataFrame({"bucket": [anchor_time], "cum_pnl": [0.0]})
+            plot_df = pd.concat([zero_row, agg_df[["bucket", "cum_pnl"]]], ignore_index=True)
+
             fig.add_trace(
                 go.Scatter(
-                    x=agg_df["bucket"],
-                    y=agg_df["cum_pnl"],
+                    x=plot_df["bucket"],
+                    y=plot_df["cum_pnl"],
                     mode="lines",
                     line={"color": color, "width": 2},
                     name=cohort_name,
                     hovertemplate=(
-                        f"{cohort_name}<br>%{{x|%Y-%m-%d}}<br>"
+                        f"{cohort_name}<br>%{{x|%Y-%m-%d %H:%M}}<br>"
                         "cum PnL: %{y:.1f} USDC<extra></extra>"
                     ),
                 )
@@ -299,7 +305,7 @@ def plot_wallet_individual_pnl(
     split_date: pd.Timestamp | None = None,
     top_n_individual: int = 20,
     title: str = "Individual wallet cumulative PnL (train + test)",
-    bucket_freq: str = "1D",
+    bucket_freq: str = "1h",
 ) -> go.Figure:
     """Per-wallet cumulative PnL lines spanning train **and** test periods.
 
