@@ -69,8 +69,18 @@ def build_execution_tape(
         available_qty, available_usdc[, fill_tx_hash]
     """
     condition_ids = set(condition_ids)
-    columns = ["condition_id", "outcome", "dt", "price", "quantity", "side"]
-    if tx_hash_column is not None:
+
+    # Support both the old raw-fill schema (price, quantity) and the grouped
+    # stage0 schema (avg_price, total_quantity).  Detect which is present and
+    # normalise to price/quantity inside each batch.
+    schema_names = set(dataset.schema.names)
+    if "price" in schema_names:
+        price_col, qty_col = "price", "quantity"
+    else:
+        price_col, qty_col = "avg_price", "total_quantity"
+
+    columns = ["condition_id", "outcome", "dt", price_col, qty_col, "side"]
+    if tx_hash_column is not None and tx_hash_column in schema_names:
         columns.append(tx_hash_column)
 
     chunks: list[pd.DataFrame] = []
@@ -78,6 +88,10 @@ def build_execution_tape(
         df: pd.DataFrame = batch.to_pandas()
         if df.empty:
             continue
+
+        # Normalise column names to price / quantity
+        if price_col != "price":
+            df = df.rename(columns={price_col: "price", qty_col: "quantity"})
 
         df["dt"] = pd.to_datetime(df["dt"], utc=True)
         date_mask = pd.Series(True, index=df.index)

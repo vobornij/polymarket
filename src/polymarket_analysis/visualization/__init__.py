@@ -9,8 +9,10 @@ from polymarket_analysis.visualization.wallet_plots import (
 from polymarket_analysis.visualization.backtest_plots import (
     with_zero_anchor,
     build_strategy_sum_daily,
-    add_daily_traces,
+    add_hourly_traces,
     plot_strategy_comparison,
+    plot_strategy_test,
+    plot_strategy_train,
 )
 
 __all__ = [
@@ -22,6 +24,8 @@ __all__ = [
     # backtest_plots
     "with_zero_anchor",
     "build_strategy_sum_daily",
-    "add_daily_traces",
+    "add_hourly_traces",
     "plot_strategy_comparison",
+    "plot_strategy_test",
+    "plot_strategy_train",
 ]
