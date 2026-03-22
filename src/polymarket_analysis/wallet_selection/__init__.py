@@ -25,6 +25,7 @@ from .selector import (
     select_wallets,
     cohort_selection_sweep,
     build_wallet_cohorts,
+    build_strategies_from_sweep,
 )
 from .persistence import WalletSet, save_wallet_set, load_wallet_set, wallet_set_exists
 
@@ -41,6 +42,7 @@ __all__ = [
     "select_wallets",
     "cohort_selection_sweep",
     "build_wallet_cohorts",
+    "build_strategies_from_sweep",
     # persistence
     "WalletSet",
     "save_wallet_set",

@@ -3,16 +3,24 @@ Wallet cohort selection functions for the signal-v2 pipeline.
 
 Provides:
 
-* :func:`select_wallets`           — skill-metric selector (quality_core cohort)
-* :func:`cohort_selection_sweep`   — grid search over metrics × top-N
-* :func:`build_wallet_cohorts`     — construct all named cohorts
-* :func:`_with_wallet_quality`     — internal helper used by :func:`build_wallet_cohorts`
+* :func:`select_wallets`              — skill-metric selector (quality_core cohort)
+* :func:`cohort_selection_sweep`      — grid search over metrics × top-N
+* :func:`build_wallet_cohorts`        — construct all named cohorts
+* :func:`build_strategies_from_sweep` — factory: sweep + cohorts → list of
+                                        :class:`~strategy.definition.WalletSelectionStrategy`
+* :func:`_with_wallet_quality`        — internal helper used by :func:`build_wallet_cohorts`
 """
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
 import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    # Avoid circular import at runtime; only used for type annotations.
+    from polymarket_analysis.strategy.definition import WalletSelectionStrategy
 
 
 # ---------------------------------------------------------------------------
@@ -290,3 +298,134 @@ def build_wallet_cohorts(
         for name, df in cohorts.items()
         if not df.empty
     }
+
+
+# ---------------------------------------------------------------------------
+# Strategy factory
+# ---------------------------------------------------------------------------
+
+def build_strategies_from_sweep(
+    wallet_cohorts: dict[str, pd.DataFrame],
+    signal_threshold: float,
+    selection_metric: str,
+    top_n: int,
+    sweep_df: pd.DataFrame | None = None,
+    extra_metadata: dict[str, Any] | None = None,
+) -> "list[WalletSelectionStrategy]":
+    """Build a :class:`~strategy.definition.WalletSelectionStrategy` per cohort.
+
+    This is the bridge between the wallet-selection stage and the backtest
+    stage.  It converts cohort DataFrames + calibration parameters into a
+    list of fully-described strategy objects that the backtest can load and
+    iterate over.
+
+    Two trigger variants are created for each cohort:
+
+    * ``{cohort}_score_threshold`` — ``signal_score >= signal_threshold``
+      with Kelly dynamic sizing.
+    * ``{cohort}_all_open_buys``   — all open-buy events with fixed sizing.
+
+    Parameters
+    ----------
+    wallet_cohorts:
+        Output of :func:`build_wallet_cohorts`.
+    signal_threshold:
+        Calibrated score threshold (output of
+        :func:`~signal.scorer.select_signal_threshold`).
+    selection_metric:
+        The wallet ranking metric chosen by the sweep (e.g.
+        ``'prob_edge_shrunk'``).
+    top_n:
+        Cohort size selected by the sweep.
+    sweep_df:
+        Optional sweep results DataFrame (stored in metadata for provenance).
+    extra_metadata:
+        Any additional key-value pairs to store in every strategy's
+        ``metadata`` dict.
+
+    Returns
+    -------
+    List of :class:`~strategy.definition.WalletSelectionStrategy` objects,
+    one per (cohort × trigger_variant) combination.
+    """
+    # Deferred import to avoid circular dependency at module load time.
+    from polymarket_analysis.strategy.definition import TriggerSpec, WalletSelectionStrategy
+
+    base_meta: dict[str, Any] = {
+        "selection_metric": selection_metric,
+        "top_n": top_n,
+        "signal_threshold": signal_threshold,
+    }
+    if sweep_df is not None and not sweep_df.empty:
+        best_row = sweep_df.sort_values(
+            ["train_b_avg_copy_roi_capped", "train_b_weighted_prob_edge"],
+            ascending=False,
+        ).iloc[0].to_dict()
+        base_meta["sweep_best_row"] = {k: (None if (isinstance(v, float) and v != v) else v)
+                                        for k, v in best_row.items()}
+    if extra_metadata:
+        base_meta.update(extra_metadata)
+
+    strategies: list[WalletSelectionStrategy] = []
+
+    # Map cohort name → selection method label
+    selection_method_map = {
+        "quality_core": "skill_sweep",
+        "early_entry": "cohort_early_entry",
+        "smooth_pnl": "cohort_smooth_pnl",
+    }
+
+    for cohort_name, cohort_wallets in wallet_cohorts.items():
+        if cohort_wallets.empty:
+            continue
+
+        selection_method = selection_method_map.get(cohort_name, cohort_name)
+        cohort_meta = dict(base_meta)
+        cohort_meta["cohort"] = cohort_name
+
+        # ── variant 1: score threshold + dynamic sizing ──────────────────
+        strategies.append(
+            WalletSelectionStrategy(
+                strategy_id=f"{cohort_name}__score_threshold",
+                name=f"{cohort_name} | score >= {signal_threshold:.2f} (Kelly)",
+                selection_method=selection_method,
+                trigger=TriggerSpec(
+                    fn_ref="polymarket_analysis.strategy.triggers.score_threshold",
+                    params={
+                        "threshold": signal_threshold,
+                        "dynamic_sizing": True,
+                    },
+                    mode="frame",
+                ),
+                wallets=cohort_wallets,
+                params={
+                    "selection_metric": selection_metric,
+                    "top_n": top_n,
+                    "signal_threshold": signal_threshold,
+                },
+                metadata=cohort_meta,
+            )
+        )
+
+        # ── variant 2: all open-buys + fixed sizing ───────────────────────
+        strategies.append(
+            WalletSelectionStrategy(
+                strategy_id=f"{cohort_name}__all_open_buys",
+                name=f"{cohort_name} | all open-buys (fixed stake)",
+                selection_method=selection_method,
+                trigger=TriggerSpec(
+                    fn_ref="polymarket_analysis.strategy.triggers.all_open_buys",
+                    params={"dynamic_sizing": False},
+                    mode="frame",
+                ),
+                wallets=cohort_wallets,
+                params={
+                    "selection_metric": selection_metric,
+                    "top_n": top_n,
+                    "signal_threshold": None,
+                },
+                metadata=cohort_meta,
+            )
+        )
+
+    return strategies

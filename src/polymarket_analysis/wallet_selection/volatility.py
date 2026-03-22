@@ -64,13 +64,16 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
     if total_pnl <= 0:
         top5_pnl_pct = float("nan")
         top_market_pnl_pct = float("nan")
+        median_roi = float("nan")
+        average_roi = float("nan")
     else:
         top5_pnl = np.sort(pnl)[-5:].sum()
         top5_pnl_pct = top5_pnl / total_pnl
         top_market_pnl_pct = (
             group.groupby("condition_id")["pnl"].sum().max() / total_pnl
         )
-
+        median_roi = (pnl / group["notional"]).median()
+        average_roi = (pnl / group["notional"]).mean()
     return pd.Series(
         {
             "pnl_volatility": scaled_weighted_pnl_volatility(group),
@@ -80,6 +83,8 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
             "total_pnl": total_pnl,
             "top5_pnl_pct": top5_pnl_pct,
             "top_market_pnl_pct": top_market_pnl_pct,
+            "median_roi": median_roi,
+            "average_roi": average_roi,
         }
     )
 
@@ -116,7 +121,7 @@ def compute_wallet_metrics(
         One row per wallet with columns:
         ``wallet``, ``pnl_volatility``, ``num_buckets``, ``num_markets``,
         ``total_notional``, ``total_pnl``, ``top5_pnl_pct``,
-        ``top_market_pnl_pct``, ``return``
+        ``top_market_pnl_pct``, ``median_roi``, ``average_roi``, ``return``
     buckets : pd.DataFrame
         The intermediate bucket-level aggregation.
     """
@@ -132,7 +137,7 @@ def compute_wallet_metrics(
 
     empty_cols = [
         "wallet", "pnl_volatility", "num_buckets", "num_markets",
-        "total_notional", "total_pnl", "top5_pnl_pct", "top_market_pnl_pct", "return",
+        "total_notional", "total_pnl", "top5_pnl_pct", "top_market_pnl_pct", "median_roi", "average_roi", "return",
     ]
 
     if buckets.empty:

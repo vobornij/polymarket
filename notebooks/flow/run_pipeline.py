@@ -3,7 +3,12 @@
 Run all pipeline stages consecutively.
 
 Usage:
-    python flow/run_pipeline.py [--stages 0 1 2 3] [--timeout 600]
+    python flow/run_pipeline.py [--stages 0 1 2] [--timeout 600]
+
+Stages:
+    0 – Polygon trade analysis (initial filtering)
+    1 – Wallet strategy selection (all methods + trigger variants → strategy registry)
+    2 – Backtest strategy sweep (loads registry, runs full sweep, plots results)
 
 Each stage notebook is executed in-place (outputs are written back).
 Progress and timing are logged to stdout and to run_pipeline.log in the
@@ -33,18 +38,13 @@ STAGES = [
     },
     {
         "id": 1,
-        "name": "Profitable wallet analysis (volatility selector)",
-        "notebook": SCRIPT_DIR / "stage1_profitable_wallet_analysis.ipynb",
+        "name": "Wallet strategy selection (all methods → strategy registry)",
+        "notebook": SCRIPT_DIR / "stage1_wallet_strategy_selection.ipynb",
     },
     {
         "id": 2,
-        "name": "Wallet signal builder & calibration",
-        "notebook": SCRIPT_DIR / "stage2_wallet_signal.ipynb",
-    },
-    {
-        "id": 3,
         "name": "Backtest strategy sweep",
-        "notebook": SCRIPT_DIR / "stage3_backtest.ipynb",
+        "notebook": SCRIPT_DIR / "stage2_backtest.ipynb",
     },
 ]
 
