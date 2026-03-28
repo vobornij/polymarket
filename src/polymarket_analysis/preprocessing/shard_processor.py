@@ -32,7 +32,7 @@ import pandas as pd
 _READ_COLS = [
     "tx_hash", "log_index", "block_timestamp", "trade_date", "condition_id",
     "token_id", "outcome", "price", "quantity", "usdc_amount", "position",
-    "wallet", "side",
+    "wallet", "side", "copyable_qty", "avail_copy_total_vol", "avail_copy_count",
 ]
 
 _GROUP_KEYS = ["tx_hash", "wallet", "side"]
@@ -70,6 +70,7 @@ def select_top_wallets_shard(
         Scalar diagnostics: ``raw_rows``, ``in_range_rows``,
         ``candidate_wallets``, ``selected_wallets``.
     """
+    print(f"Processing shard {file_path.name}...")
     raw = pd.read_parquet(file_path, columns=_READ_COLS)
     stats: dict = {
         "raw_rows": len(raw),
@@ -82,11 +83,13 @@ def select_top_wallets_shard(
         return {}, stats
 
     raw["token_id"] = raw["token_id"].astype(str)
+    raw['ts'] = pd.to_datetime(raw['block_timestamp'], utc=True)
     enriched = raw.merge(
         token_lookup_df[["token_id", "final_price"]],
         on="token_id",
         how="inner",
     )
+
     if enriched.empty:
         return {}, stats
 
@@ -98,17 +101,15 @@ def select_top_wallets_shard(
     if train.empty:
         return {}, stats
 
-    # Per-fill P&L
-    is_buy = train["side"] == "BUY"
-    final_value = train["quantity"] * train["final_price"]
-    trade_pnl = np.where(
-        is_buy,
-        final_value - train["usdc_amount"],
-        train["usdc_amount"] - final_value,
+    train.loc[:, "copyable_pnl"] = (
+        train['copyable_qty'].clip(lower=0, upper=train['quantity'])
+        * (train["final_price"] - train["price"])
+        * np.where(train["side"] == "BUY", 1, -1)
     )
 
+
     wallet_pnl_series: pd.Series = (
-        pd.Series(trade_pnl, index=train.index, dtype=float)
+        pd.Series(train["copyable_pnl"], index=train.index, dtype=float)
         .groupby(train["wallet"].to_numpy())
         .sum()
     )
@@ -191,6 +192,9 @@ def enrich_and_group_shard(
             trade_value_usdc = ("usdc_amount",      "sum"),
             final_value_usdc = ("final_value_usdc", "sum"),
             num_fills        = ("log_index",        "count"),
+            copyable_qty    = ("copyable_qty",   "sum"),
+            avail_copy_total_vol = ("avail_copy_total_vol", "sum"),
+            avail_copy_count  = ("avail_copy_count", "sum"),
         )
         .reset_index()
     )
@@ -202,10 +206,16 @@ def enrich_and_group_shard(
         grouped["trade_value_usdc"] - grouped["final_value_usdc"],
     )
 
-    # Per-wallet training P&L from this shard
+    grouped["copyable_pnl"] = (
+        grouped['copyable_qty'].clip(lower=0, upper=grouped['total_quantity'])
+        * (grouped["final_price"] - grouped["price_x_qty_sum"] / grouped["total_quantity"])
+        * np.where(grouped["side"] == "BUY", 1, -1)
+    )
+
+    # Per-wallet training copyable P&L from this shard
     train_grouped = grouped[grouped["dt"] < end_train_ts]
     wallet_train_pnl: dict[str, float] = (
-        train_grouped.groupby("wallet")["trade_pnl"].sum().to_dict()
+        train_grouped.groupby("wallet")["copyable_pnl"].sum().to_dict()
         if not train_grouped.empty
         else {}
     )

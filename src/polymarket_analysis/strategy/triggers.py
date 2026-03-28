@@ -157,6 +157,44 @@ def wallet_quality_threshold(
     return signals["wallet_quality"] >= min_q
 
 
+def copy_triggers(
+    signals: pd.DataFrame,
+    params: dict[str, Any],
+) -> pd.Series:
+    """Trigger on *every* trade the watched wallets make (open, add, close, reduce).
+
+    Unlike :func:`all_open_buys` which fires only on position-opening buys,
+    this trigger fires on all event types so that the backtest can copy the
+    full trading behaviour of the watched cohort — including add-to-position
+    buys and, for sell events, buying the *opposite* token.
+
+    The slippage tolerance is intentionally kept tight: pass
+    ``slippage_bps`` and ``max_rel_price_diff_by_bucket`` in the
+    ``BACKTEST_KWARGS`` override to enforce strict fills.
+
+    Parameters
+    ----------
+    signals:
+        Signal events DataFrame.  Must contain ``wallet`` and ``event_type``.
+        ``event_type`` values: ``'open_buy'``, ``'add_buy'``,
+        ``'close_sell'``, ``'reduce_sell'``.
+    params:
+        ``allowed_event_types`` (list[str] | None, default None) — when
+        provided, only rows whose ``event_type`` is in this list pass.
+        ``None`` means all event types pass.
+
+    Returns
+    -------
+    Boolean Series — ``True`` for every row that has a non-null ``wallet``
+    and (optionally) an allowed ``event_type``.
+    """
+    allowed = params.get("allowed_event_types")
+    mask = signals["wallet"].notna()
+    if allowed is not None:
+        mask = mask & signals["event_type"].isin(allowed)
+    return mask
+
+
 # ---------------------------------------------------------------------------
 # Registry helper
 # ---------------------------------------------------------------------------
@@ -167,6 +205,7 @@ _TRIGGER_REGISTRY: dict[str, object] = {
     "score_and_price_bucket": score_and_price_bucket,
     "score_and_consensus": score_and_consensus,
     "wallet_quality_threshold": wallet_quality_threshold,
+    "copy_triggers": copy_triggers,
 }
 
 

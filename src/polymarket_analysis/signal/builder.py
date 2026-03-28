@@ -227,7 +227,24 @@ def build_signal_events(
     price_bucket_labels: list[str] | None = None,
     batch_size: int = 300_000,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Build classified trade events and ``open_buy`` signal rows for a period.
+    """Build classified trade events and all-trade signal rows for a period.
+
+    All event types (open_buy, add_buy, close_sell, reduce_sell) are now
+    enriched and returned as the second element so that trigger strategies
+    can act on any trade the watched wallets make.
+
+    For **sell events** the copy-trader is assumed to *buy the opposite token*:
+
+    * ``copy_price``       — effective entry price = ``1 - price`` (price of
+      the complementary outcome).
+    * ``copy_market_key``  — ``condition_id|opposite_outcome`` (the key the
+      fill simulation will use for sell events).
+    * ``copy_token_winner`` — ``NOT token_winner`` (the opposite token wins
+      when the triggered token does not).
+
+    Open-buy events retain ``copy_price = price``, ``copy_market_key =
+    market_key``, and ``copy_token_winner = token_winner`` for backward
+    compatibility.
 
     Parameters
     ----------
@@ -251,10 +268,12 @@ def build_signal_events(
 
     Returns
     -------
-    (events, open_buys)
-        *events* — all classified events (open/add/close/reduce)
-        *open_buys* — only ``open_buy`` events, enriched with profiles,
-                       conviction, consensus, and probability edge
+    (events, all_signals)
+        *events*      — all classified events (open/add/close/reduce).
+        *all_signals* — all events enriched with wallet profiles, scoring
+                        features, and copy-trade direction columns.  The
+                        ``open_buy`` subset has full consensus/conviction
+                        features; non-open-buy rows get neutral defaults.
     """
     if price_bucket_bins is None:
         price_bucket_bins = DEFAULT_PRICE_BUCKET_BINS
@@ -334,40 +353,110 @@ def build_signal_events(
         .rename("first_selected_trade_dt")
     )
 
-    open_buys = events[events["event_type"] == "open_buy"].copy()
-    open_buys = open_buys.merge(wallet_profiles, on="wallet", how="left")
-    open_buys["conviction_ratio"] = (
-        open_buys["usdc_amount"]
-        / open_buys["median_open_buy_usdc"].replace({0.0: np.nan})
+    # ── Build outcome complement map for sell-event "buy opposite" direction ──
+    # For each condition_id with exactly two outcomes, record the complement.
+    outcome_pairs = (
+        events.groupby("condition_id")["outcome"]
+        .unique()
+        .reset_index()
     )
-    open_buys["conviction_ratio"] = (
-        open_buys["conviction_ratio"]
-        .replace([np.inf, -np.inf], np.nan)
-        .fillna(1.0)
+    complement_rows = []
+    for row in outcome_pairs.itertuples(index=False):
+        outcomes = sorted(row.outcome.tolist())
+        if len(outcomes) == 2:
+            complement_rows.append({"condition_id": row.condition_id,
+                                     "outcome": outcomes[0],
+                                     "opposite_outcome": outcomes[1]})
+            complement_rows.append({"condition_id": row.condition_id,
+                                     "outcome": outcomes[1],
+                                     "opposite_outcome": outcomes[0]})
+    complement_map = (
+        pd.DataFrame(complement_rows)
+        if complement_rows
+        else pd.DataFrame(columns=["condition_id", "outcome", "opposite_outcome"])
     )
-    open_buys = open_buys.merge(market_first_trade, on="condition_id", how="left")
-    open_buys["hours_since_first_selected_trade"] = (
-        (open_buys["dt"] - open_buys["first_selected_trade_dt"])
+
+    # ── Enrich all events (profiles + scoring features) ──────────────────────
+    all_signals = events.copy()
+    all_signals = all_signals.merge(wallet_profiles, on="wallet", how="left")
+
+    # Conviction ratio — meaningful only for open_buys; neutral 1.0 for others.
+    open_buy_mask = all_signals["event_type"] == "open_buy"
+    all_signals["conviction_ratio"] = np.where(
+        open_buy_mask,
+        (
+            all_signals["usdc_amount"]
+            / all_signals["median_open_buy_usdc"].replace({0.0: np.nan})
+        ).replace([np.inf, -np.inf], np.nan).fillna(1.0),
+        1.0,
+    )
+
+    all_signals = all_signals.merge(market_first_trade, on="condition_id", how="left")
+    all_signals["hours_since_first_selected_trade"] = (
+        (all_signals["dt"] - all_signals["first_selected_trade_dt"])
         .dt.total_seconds()
         / 3600.0
     ).clip(lower=0.0)
 
-    open_buys["prob_edge"] = open_buys["final_price"] - open_buys["price"]
-    open_buys["copy_roi"] = np.where(
-        open_buys["token_winner"],
-        1.0 / open_buys["price"].clip(lower=0.001) - 1.0,
+    # PnL-related features at the trigger price.
+    all_signals["prob_edge"] = all_signals["final_price"] - all_signals["price"]
+    all_signals["copy_roi"] = np.where(
+        all_signals["token_winner"],
+        1.0 / all_signals["price"].clip(lower=0.001) - 1.0,
         -1.0,
     )
-    open_buys["copy_roi_capped"] = np.clip(open_buys["copy_roi"], -1.0, 10.0)
-    open_buys["price_bucket"] = pd.cut(
-        open_buys["price"],
+    all_signals["copy_roi_capped"] = np.clip(all_signals["copy_roi"], -1.0, 10.0)
+    all_signals["price_bucket"] = pd.cut(
+        all_signals["price"],
         bins=price_bucket_bins,
         labels=price_bucket_labels,
         include_lowest=True,
     ).astype(str)
 
-    open_buys = attach_consensus_features(open_buys)
-    return events, open_buys
+    # Neutral consensus features for non-open-buy rows; will be overwritten
+    # for the open_buy subset below.
+    for col in ["prior_same_any", "prior_opp_any", "prior_same_24h", "prior_opp_24h"]:
+        all_signals[col] = 0
+    all_signals["consensus_velocity_24h"] = 0.0
+
+    # Attach full consensus features to open_buy rows in-place.
+    ob_idx = all_signals.index[open_buy_mask].tolist()
+    if ob_idx:
+        ob_enriched = attach_consensus_features(all_signals.loc[ob_idx].copy())
+        for col in ["prior_same_any", "prior_opp_any",
+                    "prior_same_24h", "prior_opp_24h", "consensus_velocity_24h"]:
+            all_signals.loc[ob_idx, col] = ob_enriched[col].values
+
+    # ── Copy-trade direction columns ──────────────────────────────────────────
+    # For BUY events: copy by buying the same token at the same price.
+    # For SELL events: copy by buying the *opposite* token at price = 1 - price.
+    is_sell = all_signals["side"] == "SELL"
+
+    all_signals = all_signals.merge(complement_map, on=["condition_id", "outcome"], how="left")
+
+    # copy_price: price the copy-trader will pay for their position.
+    all_signals["copy_price"] = np.where(
+        is_sell,
+        (1.0 - all_signals["price"]).clip(lower=0.001, upper=0.999),
+        all_signals["price"],
+    )
+    # copy_market_key: which tape market to look up fills in.
+    all_signals["copy_market_key"] = np.where(
+        is_sell & all_signals["opposite_outcome"].notna(),
+        all_signals["condition_id"] + "|" + all_signals["opposite_outcome"].fillna(""),
+        all_signals["market_key"],
+    )
+    # copy_token_winner: does the token the copy-trader buys resolve as winner?
+    all_signals["copy_token_winner"] = np.where(
+        is_sell,
+        ~all_signals["token_winner"],
+        all_signals["token_winner"],
+    )
+
+    # Drop intermediate helper column.
+    all_signals = all_signals.drop(columns=["opposite_outcome"], errors="ignore")
+
+    return events, all_signals
 
 
 # ---------------------------------------------------------------------------

@@ -158,6 +158,25 @@ def backtest_strategy(
     trades["cohort"] = cohort_name
     trades["sizing_mode"] = "kelly_simple" if dynamic_sizing else "fixed"
 
+    # ── Normalise copy-trade direction columns ───────────────────────────────
+    # For sell-event signals, copy_price/copy_market_key/copy_token_winner were
+    # set by build_signal_events to point at the *opposite* token.  We overwrite
+    # market_key / price / token_winner with those values so that the rest of
+    # the backtest pipeline (fill simulation, PnL) acts on the right token.
+    # Rows where copy_* columns are absent or NaN keep their original values.
+    if "copy_market_key" in trades.columns:
+        trades["market_key"] = trades["copy_market_key"].where(
+            trades["copy_market_key"].notna(), trades["market_key"]
+        )
+    if "copy_price" in trades.columns:
+        trades["price"] = trades["copy_price"].where(
+            trades["copy_price"].notna(), trades["price"]
+        )
+    if "copy_token_winner" in trades.columns:
+        trades["token_winner"] = trades["copy_token_winner"].where(
+            trades["copy_token_winner"].notna(), trades["token_winner"]
+        )
+
     if dedupe_by_market:
         trades = trades.drop_duplicates("market_key", keep="first")
 

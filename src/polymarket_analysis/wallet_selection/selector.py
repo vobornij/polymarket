@@ -438,4 +438,25 @@ def build_strategies_from_sweep(
             )
         )
 
+        # ── variant 3: copy all triggers (open/add/close/reduce) + tight slippage
+        strategies.append(
+            WalletSelectionStrategy(
+                strategy_id=f"{cohort_name}__copy_triggers",
+                name=f"{cohort_name} | copy all triggers (tight slippage)",
+                selection_method=selection_method,
+                trigger=TriggerSpec(
+                    fn_ref="polymarket_analysis.strategy.triggers.copy_triggers",
+                    params={"dynamic_sizing": False},
+                    mode="frame",
+                ),
+                wallets=cohort_wallets,
+                params={
+                    "selection_metric": selection_metric,
+                    "top_n": top_n,
+                    "signal_threshold": None,
+                },
+                metadata=cohort_meta,
+            )
+        )
+
     return strategies

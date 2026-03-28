@@ -213,13 +213,7 @@ def plot_wallet_selection_pnl(
         df = df[df["bucket"] >= split_date]
 
     all_wallets = list({w for c in wallet_cohorts.values() for w in c["wallet"]})
-    df_sel = df[df["wallet"].isin(all_wallets)][["wallet", "bucket", "trade_pnl"]].copy()
-
-    daily = (
-        df_sel.groupby(["wallet", "bucket"], sort=True)["trade_pnl"]
-        .sum()
-        .reset_index()
-    )
+    df_sel = df[df["wallet"].isin(all_wallets)][["wallet", "bucket", "trade_pnl", "copyable_pnl"]].copy()
 
     # ── colour palette — one colour per cohort ───────────────────────────────
     palette = [
@@ -236,12 +230,13 @@ def plot_wallet_selection_pnl(
         wallets_in_cohort = set(cohort_df["wallet"])
 
         agg_df = (
-            daily[daily["wallet"].isin(wallets_in_cohort)]
-            .groupby("bucket", sort=True)["trade_pnl"]
-            .sum()
+            df_sel[df_sel["wallet"].isin(wallets_in_cohort)]
+            .groupby("bucket", sort=True)[["trade_pnl", "copyable_pnl"]]
+            .agg({"trade_pnl": "sum", "copyable_pnl": "sum"})
             .reset_index()
         )
         agg_df["cum_pnl"] = agg_df["trade_pnl"].cumsum()
+        agg_df["cum_copyable_pnl"] = agg_df["copyable_pnl"].cumsum()
 
         if period == "both" and split_date is not None and not agg_df.empty:
             # Reset test-period cumulation to start from 0
@@ -249,24 +244,42 @@ def plot_wallet_selection_pnl(
             split_offset = float(pre_split.iloc[-1]) if not pre_split.empty else 0.0
             post = agg_df["bucket"] >= split_date
             agg_df.loc[post, "cum_pnl"] = agg_df.loc[post, "cum_pnl"] - split_offset
+            agg_df.loc[post, "cum_copyable_pnl"] = agg_df.loc[post, "cum_copyable_pnl"] - split_offset
 
         if not agg_df.empty:
             # Prepend an explicit (anchor_time, 0) point so the line always
             # starts at zero regardless of the PnL in the first bucket.
             anchor_time = split_date if (period == "test" and split_date is not None) else agg_df["bucket"].iloc[0]
-            zero_row = pd.DataFrame({"bucket": [anchor_time], "cum_pnl": [0.0]})
-            plot_df = pd.concat([zero_row, agg_df[["bucket", "cum_pnl"]]], ignore_index=True)
+            zero_row = pd.DataFrame({"bucket": [anchor_time], "cum_pnl": [0.0], "cum_copyable_pnl": [0.0]})
+            plot_df = pd.concat([zero_row, agg_df[["bucket", "cum_pnl", "cum_copyable_pnl"]]], ignore_index=True)
 
+            # add traces for both total and copyable PnL, with different line styles
+
+            # Total PnL (solid line)
             fig.add_trace(
                 go.Scatter(
                     x=plot_df["bucket"],
                     y=plot_df["cum_pnl"],
                     mode="lines",
-                    line={"color": color, "width": 2},
-                    name=cohort_name,
+                    line={"color": color, "width": 2, "dash": "solid"},
+                    name=f"{cohort_name} (total)",
                     hovertemplate=(
-                        f"{cohort_name}<br>%{{x|%Y-%m-%d %H:%M}}<br>"
+                        f"{cohort_name} (total)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
                         "cum PnL: %{y:.1f} USDC<extra></extra>"
+                    ),
+                )
+            )
+            # Copyable PnL (dashed line)
+            fig.add_trace(
+                go.Scatter(
+                    x=plot_df["bucket"],
+                    y=plot_df["cum_copyable_pnl"],
+                    mode="lines",
+                    line={"color": color, "width": 2, "dash": "dash"},
+                    name=f"{cohort_name} (copyable)",
+                    hovertemplate=(
+                        f"{cohort_name} (copyable)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
+                        "cum Copyable PnL: %{y:.1f} USDC<extra></extra>"
                     ),
                 )
             )

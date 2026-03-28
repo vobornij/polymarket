@@ -128,6 +128,75 @@ def with_zero_anchor(daily: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def resample_hourly_wallet_cohort(
+    df_fills: pd.DataFrame,
+    wallets: pd.Series | list,
+    *,
+    dt_min: pd.Timestamp | None = None,
+    dt_max: pd.Timestamp | None = None,
+) -> pd.DataFrame:
+    """Resample raw wallet cohort PnL to 1-hour buckets.
+
+    Filters ``df_fills`` to the given wallet set (and optionally to a date
+    range), sums ``trade_pnl`` per 1h bucket across all wallets in the cohort,
+    and returns the cumulative curve.
+
+    Parameters
+    ----------
+    df_fills:
+        Stage-0 DataFrame with columns ``wallet``, ``dt``, ``trade_pnl``.
+    wallets:
+        Collection of wallet addresses belonging to the cohort.
+    dt_min, dt_max:
+        Optional inclusive date bounds (timezone-aware or naive — matched
+        to the timezone of ``df_fills["dt"]``).
+
+    Returns
+    -------
+    DataFrame with columns ``trade_dt``, ``net_pnl_usdc``, ``cum_net_pnl_usdc``.
+    """
+    cols = ["trade_dt", "net_pnl_usdc", "cum_net_pnl_usdc"]
+    required = {"wallet", "dt", "trade_pnl"}
+    if df_fills.empty or not required.issubset(df_fills.columns):
+        return pd.DataFrame(columns=cols)
+
+    wallet_set = set(wallets)
+    mask = df_fills["wallet"].isin(wallet_set)
+    filtered = df_fills.loc[mask, ["dt", "trade_pnl"]].copy()
+
+    if filtered.empty:
+        return pd.DataFrame(columns=cols)
+
+    # Normalise timezone so comparisons work regardless of tz-awareness.
+    dt_col = pd.to_datetime(filtered["dt"], utc=True)
+    filtered = filtered.assign(dt=dt_col)
+
+    if dt_min is not None:
+        ts_min = pd.Timestamp(dt_min)
+        if ts_min.tzinfo is None:
+            ts_min = ts_min.tz_localize("UTC")
+        filtered = filtered[filtered["dt"] >= ts_min]
+    if dt_max is not None:
+        ts_max = pd.Timestamp(dt_max)
+        if ts_max.tzinfo is None:
+            ts_max = ts_max.tz_localize("UTC")
+        filtered = filtered[filtered["dt"] <= ts_max]
+
+    if filtered.empty:
+        return pd.DataFrame(columns=cols)
+
+    hourly = (
+        filtered.assign(trade_dt=filtered["dt"].dt.floor("1h"))
+        .groupby("trade_dt", as_index=False)["trade_pnl"]
+        .sum()
+        .rename(columns={"trade_pnl": "net_pnl_usdc"})
+        .sort_values("trade_dt")
+        .reset_index(drop=True)
+    )
+    hourly["cum_net_pnl_usdc"] = hourly["net_pnl_usdc"].cumsum()
+    return hourly
+
+
 def build_strategy_sum_daily(strategy_runs: dict) -> pd.DataFrame:
     """Aggregate daily PnL across all strategies for a quick portfolio view."""
     parts = []
@@ -211,21 +280,36 @@ def plot_strategy_comparison(
     strategy_runs: dict,
     *,
     title: str = "Strategy comparison – cumulative PnL (test)",
+    df_fills: pd.DataFrame | None = None,
+    dt_min: pd.Timestamp | None = None,
+    dt_max: pd.Timestamp | None = None,
 ) -> go.Figure:
-    """Single-panel 1h-resolution cumulative PnL chart for the test period.
+    """Single-panel 1h-resolution cumulative PnL chart.
 
     Parameters
     ----------
     strategy_runs:
         Test-period strategy runs dict (``{strategy_id → run_dict}``).
         Each run dict must contain a ``"trades"`` DataFrame with ``dt`` and
-        ``net_pnl_usdc`` columns.
+        ``net_pnl_usdc`` columns, and a ``"strategy"`` key holding a
+        ``WalletSelectionStrategy`` instance (used to look up wallet addresses
+        for the optional cohort overlay).
     title:
         Figure title.
+    df_fills:
+        Optional stage-0 DataFrame with columns ``wallet``, ``dt``,
+        ``trade_pnl``.  When provided, one additional dotted trace is added
+        per strategy showing the raw PnL of the wallets in that strategy's
+        cohort over the same period.
+    dt_min, dt_max:
+        Inclusive date bounds applied when filtering ``df_fills``.  Typically
+        set to the start and end of the period being plotted so that wallet
+        cohort PnL is restricted to the same window as the backtest.
 
     Returns
     -------
-    ``go.Figure`` — one trace per strategy, 1h resolution.
+    ``go.Figure`` — per strategy: solid filled trace, dashdot theoretical
+    trace, and (if *df_fills* supplied) dotted wallet-cohort trace.
     """
     fig = go.Figure()
     for name, run in strategy_runs.items():
@@ -267,6 +351,36 @@ def plot_strategy_comparison(
                     ),
                 )
             )
+
+        # Wallet cohort raw PnL — dotted, lower opacity
+        if df_fills is not None and not df_fills.empty:
+            strategy = run.get("strategy")
+            wallets = (
+                strategy.wallets["wallet"]
+                if strategy is not None and hasattr(strategy, "wallets")
+                else pd.Series([], dtype=str)
+            )
+            cohort_hourly = resample_hourly_wallet_cohort(
+                df_fills, wallets, dt_min=dt_min, dt_max=dt_max
+            )
+            if not cohort_hourly.empty:
+                plot_cohort = with_zero_anchor_hourly(cohort_hourly)
+                fig.add_trace(
+                    go.Scatter(
+                        x=plot_cohort["trade_dt"],
+                        y=plot_cohort["cum_net_pnl_usdc"],
+                        mode="lines",
+                        line={"dash": "dot"},
+                        opacity=0.5,
+                        name=f"{name} [cohort wallets]",
+                        hovertemplate=(
+                            "<b>%{fullData.name}</b><br>"
+                            "%{x|%Y-%m-%d %H:%M}<br>"
+                            "cohort cum PnL: %{y:.2f} USDC<extra></extra>"
+                        ),
+                    )
+                )
+
     fig.update_layout(
         template="plotly_white",
         height=500,
@@ -281,18 +395,38 @@ def plot_strategy_test(
     strategy_runs: dict,
     *,
     title: str = "Strategy comparison – test period (1h)",
+    df_fills: pd.DataFrame | None = None,
+    dt_min: pd.Timestamp | None = None,
+    dt_max: pd.Timestamp | None = None,
 ) -> go.Figure:
     """1h-resolution cumulative PnL chart for the **test** period.
 
-    Alias for :func:`plot_strategy_comparison` with a clearer name.
+    Parameters
+    ----------
+    strategy_runs:
+        Test-period strategy runs dict.
+    title:
+        Figure title.
+    df_fills:
+        Optional stage-0 DataFrame (``wallet``, ``dt``, ``trade_pnl``).
+        When provided, one dotted trace per strategy shows the raw PnL of the
+        wallets in that strategy's cohort.
+    dt_min, dt_max:
+        Date bounds for filtering *df_fills* to the test window.
     """
-    return plot_strategy_comparison(strategy_runs, title=title)
+    return plot_strategy_comparison(
+        strategy_runs, title=title,
+        df_fills=df_fills, dt_min=dt_min, dt_max=dt_max,
+    )
 
 
 def plot_strategy_train(
     strategy_runs_train_ref: dict,
     *,
     title: str = "Strategy comparison – train-B period (1h)",
+    df_fills: pd.DataFrame | None = None,
+    dt_min: pd.Timestamp | None = None,
+    dt_max: pd.Timestamp | None = None,
 ) -> go.Figure:
     """1h-resolution cumulative PnL chart for the **train-B** reference period.
 
@@ -302,5 +436,14 @@ def plot_strategy_train(
         Train-reference strategy runs dict.
     title:
         Figure title.
+    df_fills:
+        Optional stage-0 DataFrame (``wallet``, ``dt``, ``trade_pnl``).
+        When provided, one dotted trace per strategy shows the raw PnL of the
+        wallets in that strategy's cohort.
+    dt_min, dt_max:
+        Date bounds for filtering *df_fills* to the train-B window.
     """
-    return plot_strategy_comparison(strategy_runs_train_ref, title=title)
+    return plot_strategy_comparison(
+        strategy_runs_train_ref, title=title,
+        df_fills=df_fills, dt_min=dt_min, dt_max=dt_max,
+    )

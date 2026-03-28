@@ -60,6 +60,10 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
     pnl = group["pnl"].to_numpy(dtype=float)
     total_notional = group["notional"].sum()
     total_pnl = pnl.sum()
+    total_qty = group["quantity"].sum()
+    copyable_qty = group["copyable_qty"].sum()
+
+    copyable_qty = np.clip(copyable_qty, 0, total_qty)
 
     if total_pnl <= 0:
         top5_pnl_pct = float("nan")
@@ -81,6 +85,7 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
             "num_markets": group["condition_id"].nunique(),
             "total_notional": total_notional,
             "total_pnl": total_pnl,
+            "copyable_pnl": copyable_qty / total_qty * total_pnl,
             "top5_pnl_pct": top5_pnl_pct,
             "top_market_pnl_pct": top_market_pnl_pct,
             "median_roi": median_roi,
@@ -130,7 +135,12 @@ def compute_wallet_metrics(
 
     buckets = (
         tmp.groupby(["wallet", "dt_floored", "condition_id"], sort=False)
-        .agg(notional=("notional", "sum"), pnl=("pnl", "sum"))
+        .agg(
+            notional=("notional", "sum"), 
+            pnl=("pnl", "sum"),
+            quantity=("quantity", "sum"),
+            copyable_qty=("copyable_qty", "sum"),
+            )
         .reset_index()
     )
     buckets = buckets[buckets["notional"] > 0].copy()
