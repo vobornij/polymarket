@@ -97,7 +97,7 @@ def select_top_wallets_shard(
     stats["in_range_rows"] = len(enriched)
 
     # Restrict to training period only
-    train = enriched[enriched["dt"] < end_train_ts]
+    train = enriched[enriched["dt"] < end_train_ts].copy()
     if train.empty:
         return {}, stats
 
@@ -116,8 +116,11 @@ def select_top_wallets_shard(
 
     stats["candidate_wallets"] = len(wallet_pnl_series)
     threshold: float = float(wallet_pnl_series.quantile(1.0 - top_pct))
+    stats['threshold'] = threshold
+    print(f"Shard top {top_pct:.2%} threshold: {threshold:.2f} USDC")
     top = wallet_pnl_series[wallet_pnl_series >= threshold]
     stats["selected_wallets"] = len(top)
+    stats['threshold'] = threshold
 
     return dict(top), stats
 
@@ -207,9 +210,8 @@ def enrich_and_group_shard(
     )
 
     grouped["copyable_pnl"] = (
-        grouped['copyable_qty'].clip(lower=0, upper=grouped['total_quantity'])
-        * (grouped["final_price"] - grouped["price_x_qty_sum"] / grouped["total_quantity"])
-        * np.where(grouped["side"] == "BUY", 1, -1)
+        (grouped['copyable_qty'].clip(lower=0, upper=grouped['total_quantity']) / grouped['total_quantity'])
+        * grouped["trade_pnl"]
     )
 
     # Per-wallet training copyable P&L from this shard

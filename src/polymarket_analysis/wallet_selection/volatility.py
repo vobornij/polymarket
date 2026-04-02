@@ -9,6 +9,7 @@ can be used independently (e.g. via ``profitable_wallet_analysis.ipynb``).
 from __future__ import annotations
 
 import math
+from tokenize import group
 
 import numpy as np
 import pandas as pd
@@ -55,15 +56,41 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
     """Compute per-wallet metrics from a pre-aggregated bucket DataFrame.
 
     *group* is a subset of the buckets DataFrame for a single wallet and must
-    contain: ``pnl``, ``notional``, ``condition_id``.
+    contain: ``pnl``, ``notional``, ``condition_id``, ``copyable_pnl``, ``quantity``, ``copyable_qty``.
     """
     pnl = group["pnl"].to_numpy(dtype=float)
     total_notional = group["notional"].sum()
     total_pnl = pnl.sum()
+    total_copyable_pnl = group["copyable_pnl"].sum()
     total_qty = group["quantity"].sum()
     copyable_qty = group["copyable_qty"].sum()
 
+    max_achieved_pnl = 0
+    max_drawdown = 0
+    cum_pnl = np.cumsum(pnl)
+    for x in cum_pnl:
+        if x > max_achieved_pnl:
+            max_achieved_pnl = x
+        if(x < max_achieved_pnl):
+            drawdown = max_achieved_pnl - x
+            if drawdown > max_drawdown:
+                max_drawdown = drawdown
+
+    
+    max_copyable_pnl = 0
+    max_copyable_drawdown = 0
+    cum_copyable_pnl = np.cumsum(group["copyable_pnl"])
+    for x in cum_copyable_pnl:
+        if x > max_copyable_pnl:
+            max_copyable_pnl = x
+        if(x < max_copyable_pnl):
+            drawdown = max_copyable_pnl - x
+            if drawdown > max_copyable_drawdown:
+                max_copyable_drawdown = drawdown
+
     copyable_qty = np.clip(copyable_qty, 0, total_qty)
+
+    group['dt_1h'] = group['dt_floored'].dt.floor('1h')
 
     if total_pnl <= 0:
         top5_pnl_pct = float("nan")
@@ -71,10 +98,15 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
         median_roi = float("nan")
         average_roi = float("nan")
     else:
-        top5_pnl = np.sort(pnl)[-5:].sum()
+        # op5_pnl = np.sort(pnl)[-5:].sum()
+        bucket_pnls = group.groupby(['dt_1h', 'condition_id'], sort=False)["pnl"].sum()
+        # Take the top 5 buckets by PnL (largest positive values)
+        top5_pnl = bucket_pnls.sort_values(ascending=False).iloc[:5].sum()
         top5_pnl_pct = top5_pnl / total_pnl
+        
         top_market_pnl_pct = (
             group.groupby("condition_id")["pnl"].sum().max() / total_pnl
+
         )
         median_roi = (pnl / group["notional"]).median()
         average_roi = (pnl / group["notional"]).mean()
@@ -85,11 +117,15 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
             "num_markets": group["condition_id"].nunique(),
             "total_notional": total_notional,
             "total_pnl": total_pnl,
-            "copyable_pnl": copyable_qty / total_qty * total_pnl,
+            "copyable_pnl": total_copyable_pnl,
             "top5_pnl_pct": top5_pnl_pct,
             "top_market_pnl_pct": top_market_pnl_pct,
             "median_roi": median_roi,
             "average_roi": average_roi,
+            "max_drawdown": max_drawdown,
+            "max_drawdown_to_pnl": max_drawdown / total_pnl if total_pnl > 0 else float("nan"),
+            "max_copyable_drawdown": max_copyable_drawdown,
+            "max_copyable_drawdown_to_copyable_pnl": max_copyable_drawdown / total_copyable_pnl if total_copyable_pnl > 0 else float("nan"),
         }
     )
 
@@ -138,6 +174,7 @@ def compute_wallet_metrics(
         .agg(
             notional=("notional", "sum"), 
             pnl=("pnl", "sum"),
+            copyable_pnl=("copyable_pnl", "sum"),
             quantity=("quantity", "sum"),
             copyable_qty=("copyable_qty", "sum"),
             )
