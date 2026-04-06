@@ -130,13 +130,17 @@ def compute_future_better_price_qty(df: pd.DataFrame, window: datetime.timedelta
     return df
 
 
-def enrich_shard(f, enriched_dir: Path, seconds: int) -> None:
+def enrich_shard(f, enriched_dir: Path, seconds: int, token_df: pd.DataFrame) -> None:
     if (enriched_dir / f"enriched_{f.name}").exists():
         print(f"Enriched file for {f.name} already exists, skipping...")
         return
     enriched_dir.mkdir(parents=True, exist_ok=True)
     raw = pd.read_parquet(f)
+    print(f"{len(raw)} trades in {f.name}")
     if("avail_copy_qty" in raw.columns): return
+    raw = raw.merge(token_df[["token_id"]], on="token_id", how="inner")
+    print(f"{len(raw)} trades after merging with token_df for {f.name}")
+
 
     raw['ts'] = pd.to_datetime(raw['block_timestamp'], utc=True, unit='s')
 

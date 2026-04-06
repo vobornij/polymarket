@@ -322,47 +322,47 @@ def plot_wallet_selection_pnl(
                 )
             )
             # Copyable PnL (dashed line)
-            fig.add_trace(
-                go.Scatter(
-                    x=plot_df["bucket"],
-                    y=plot_df["cum_copyable_pnl"],
-                    mode="lines",
-                    line={"color": color, "width": 2, "dash": "dash"},
-                    name=f"{cohort_name} (copyable)",
-                    hovertemplate=(
-                        f"{cohort_name} (copyable)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
-                        "cum Copyable PnL: %{y:.1f} USDC<extra></extra>"
-                    ),
-                )
-            )
+            # fig.add_trace(
+            #     go.Scatter(
+            #         x=plot_df["bucket"],
+            #         y=plot_df["cum_copyable_pnl"],
+            #         mode="lines",
+            #         line={"color": color, "width": 2, "dash": "dash"},
+            #         name=f"{cohort_name} (copyable)",
+            #         hovertemplate=(
+            #             f"{cohort_name} (copyable)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
+            #             "cum Copyable PnL: %{y:.1f} USDC<extra></extra>"
+            #         ),
+            #     )
+            # )
             # Copyable PnL (BUY only, dashed line)
-            fig.add_trace(
-                go.Scatter(
-                    x=plot_df["bucket"],
-                    y=plot_df["cum_copyable_pnl_buy"],
-                    mode="lines",
-                    line={"color": color, "width": 2, "dash": "dot"},
-                    name=f"{cohort_name} (copyable, BUY only)",
-                    hovertemplate=(
-                        f"{cohort_name} (copyable, BUY only)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
-                        "cum Copyable PnL (BUY only): %{y:.1f} USDC<extra></extra>"
-                    ),
-                )
-            )
+            # fig.add_trace(
+            #     go.Scatter(
+            #         x=plot_df["bucket"],
+            #         y=plot_df["cum_copyable_pnl_buy"],
+            #         mode="lines",
+            #         line={"color": color, "width": 2, "dash": "dot"},
+            #         name=f"{cohort_name} (copyable, BUY only)",
+            #         hovertemplate=(
+            #             f"{cohort_name} (copyable, BUY only)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
+            #             "cum Copyable PnL (BUY only): %{y:.1f} USDC<extra></extra>"
+            #         ),
+            #     )
+            # )
             # limited Copyable PnL (dotted line)
-            fig.add_trace(
-                go.Scatter(
-                    x=bucket_lim_df["bucket"],
-                    y=bucket_lim_df["cum_copyable_pnl_limited"],
-                    mode="lines",
-                    line={"color": color, "width": 2, "dash": "dot"},
-                    name=f"{cohort_name} (copyable, exposure-limited)",
-                    hovertemplate=(
-                        f"{cohort_name} (copyable, exposure-limited)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
-                        "cum Copyable PnL (exposure-limited): %{y:.1f} USDC<extra></extra>"
-                    ),
-                )
-            )
+            # fig.add_trace(
+            #     go.Scatter(
+            #         x=bucket_lim_df["bucket"],
+            #         y=bucket_lim_df["cum_copyable_pnl_limited"],
+            #         mode="lines",
+            #         line={"color": color, "width": 2, "dash": "dot"},
+            #         name=f"{cohort_name} (copyable, exposure-limited)",
+            #         hovertemplate=(
+            #             f"{cohort_name} (copyable, exposure-limited)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
+            #             "cum Copyable PnL (exposure-limited): %{y:.1f} USDC<extra></extra>"
+            #         ),
+            #     )
+            # )
 
             # limited Copyable PnL (dotted line)
             fig.add_trace(
@@ -397,11 +397,12 @@ def plot_wallet_selection_pnl(
 
     fig.update_layout(
         template="plotly_white",
-        height=450,
+        height=750,
         title=title,
         xaxis_title="Date",
         yaxis_title="Cumulative PnL (USDC)",
         legend_title="Cohort",
+        # yaxis=dict(type="log", rangemode="tozero", range=[0, None]),
     )
     return fig
 
@@ -574,11 +575,12 @@ def plot_wallet_individual_pnl(
 
     fig.update_layout(
         template="plotly_white",
-        height=600,
+        height=900,
         title=title,
         xaxis_title="Date",
         yaxis_title="Cumulative PnL (USDC)",
         legend_title="Cohort",
+        yaxis=dict(type="log", range=[0, None]),
     )
     return fig
 
