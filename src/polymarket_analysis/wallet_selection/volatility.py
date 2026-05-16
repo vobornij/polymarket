@@ -121,6 +121,7 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
             "top5_pnl_pct": top5_pnl_pct,
             "top_market_pnl_pct": top_market_pnl_pct,
             "median_roi": median_roi,
+            "median_dt": group["dt_floored"].median(),
             "average_roi": average_roi,
             "max_drawdown": max_drawdown,
             "max_drawdown_to_pnl": max_drawdown / total_pnl if total_pnl > 0 else float("nan"),
