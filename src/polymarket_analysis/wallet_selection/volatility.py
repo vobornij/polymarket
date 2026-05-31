@@ -94,6 +94,7 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
 
     if total_pnl <= 0:
         top5_pnl_pct = float("nan")
+        worst5_pnl_pct = float("nan")
         top_market_pnl_pct = float("nan")
         median_roi = float("nan")
         average_roi = float("nan")
@@ -103,6 +104,9 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
         # Take the top 5 buckets by PnL (largest positive values)
         top5_pnl = bucket_pnls.sort_values(ascending=False).iloc[:5].sum()
         top5_pnl_pct = top5_pnl / total_pnl
+        # Take the worst 5 buckets by PnL (largest negative values)
+        worst5_pnl = bucket_pnls.sort_values(ascending=True).iloc[:5].sum()
+        worst5_pnl_pct = worst5_pnl / total_pnl
         
         top_market_pnl_pct = (
             group.groupby("condition_id")["pnl"].sum().max() / total_pnl
@@ -119,6 +123,7 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
             "total_pnl": total_pnl,
             "copyable_pnl": total_copyable_pnl,
             "top5_pnl_pct": top5_pnl_pct,
+            "worst5_pnl_pct": worst5_pnl_pct,
             "top_market_pnl_pct": top_market_pnl_pct,
             "median_roi": median_roi,
             "median_dt": group["dt_floored"].median(),
@@ -162,7 +167,7 @@ def compute_wallet_metrics(
     result : pd.DataFrame
         One row per wallet with columns:
         ``wallet``, ``pnl_volatility``, ``num_buckets``, ``num_markets``,
-        ``total_notional``, ``total_pnl``, ``top5_pnl_pct``,
+        ``total_notional``, ``total_pnl``, ``top5_pnl_pct``, ``worst5_pnl_pct``,
         ``top_market_pnl_pct``, ``median_roi``, ``average_roi``, ``return``
     buckets : pd.DataFrame
         The intermediate bucket-level aggregation.
@@ -185,7 +190,7 @@ def compute_wallet_metrics(
 
     empty_cols = [
         "wallet", "pnl_volatility", "num_buckets", "num_markets",
-        "total_notional", "total_pnl", "top5_pnl_pct", "top_market_pnl_pct", "median_roi", "average_roi", "return",
+        "total_notional", "total_pnl", "top5_pnl_pct", "worst5_pnl_pct", "top_market_pnl_pct", "median_roi", "average_roi", "return",
     ]
 
     if buckets.empty:
