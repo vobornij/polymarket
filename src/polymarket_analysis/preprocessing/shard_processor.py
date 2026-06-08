@@ -47,6 +47,7 @@ def select_top_wallets_shard(
     token_lookup_df: pd.DataFrame,
     end_train_ts: pd.Timestamp,
     top_pct: float = 0.04,
+    selection_pnl: str = "copyable_pnl",
 ) -> tuple[dict[str, float], dict]:
     """Identify the top-*top_pct* wallets by training P&L within one shard.
 
@@ -60,6 +61,10 @@ def select_top_wallets_shard(
         Upper bound (exclusive) for the training period.
     top_pct:
         Fraction of wallets to keep per shard (default 4 %).
+
+    selection_pnl:
+        Wallet-ranking target computed on training rows.
+        Supported values: ``"trade_pnl"`` (default), ``"copyable_pnl"``.
 
     Returns
     -------
@@ -101,15 +106,28 @@ def select_top_wallets_shard(
     if train.empty:
         return {}, stats
 
+    train.loc[:, "trade_pnl"] = np.where(
+        train["side"] == "BUY",
+        train["quantity"] * (train["final_price"] - train["price"]),
+        train["quantity"] * (train["price"] - train["final_price"]),
+    )
+
     train.loc[:, "copyable_pnl"] = (
         train['copyable_qty'].clip(lower=0, upper=train['quantity'])
         * (train["final_price"] - train["price"])
         * np.where(train["side"] == "BUY", 1, -1)
     )
 
+    if selection_pnl not in {"trade_pnl", "copyable_pnl"}:
+        raise ValueError(
+            f"Unsupported selection_pnl={selection_pnl!r}; "
+            "expected 'trade_pnl' or 'copyable_pnl'."
+        )
+
+    pnl_col = selection_pnl
 
     wallet_pnl_series: pd.Series = (
-        pd.Series(train["copyable_pnl"], index=train.index, dtype=float)
+        pd.Series(train[pnl_col], index=train.index, dtype=float)
         .groupby(train["wallet"].to_numpy())
         .sum()
     )
@@ -134,6 +152,7 @@ def enrich_and_group_shard(
     token_lookup_df: pd.DataFrame,
     end_train_ts: pd.Timestamp,
     top_wallets: set[str],
+    wallet_pnl_metric: str = "copyable_pnl",
 ) -> tuple[pd.DataFrame, dict[str, float]]:
     """Enrich one shard, group by tx×wallet×side, filter to *top_wallets*.
 
@@ -147,6 +166,9 @@ def enrich_and_group_shard(
         Used to label ``is_train`` and to compute per-wallet training P&L.
     top_wallets:
         Set of wallet addresses to keep.  Rows for other wallets are dropped.
+    wallet_pnl_metric:
+        Which per-row PnL column to aggregate when returning ``wallet_train_pnl``.
+        Supported values: ``"trade_pnl"`` (default), ``"copyable_pnl"``.
 
     Returns
     -------
@@ -214,10 +236,16 @@ def enrich_and_group_shard(
         * grouped["trade_pnl"]
     )
 
-    # Per-wallet training copyable P&L from this shard
+    if wallet_pnl_metric not in {"trade_pnl", "copyable_pnl"}:
+        raise ValueError(
+            f"Unsupported wallet_pnl_metric={wallet_pnl_metric!r}; "
+            "expected 'trade_pnl' or 'copyable_pnl'."
+        )
+
+    # Per-wallet training P&L from this shard
     train_grouped = grouped[grouped["dt"] < end_train_ts]
     wallet_train_pnl: dict[str, float] = (
-        train_grouped.groupby("wallet")["copyable_pnl"].sum().to_dict()
+        train_grouped.groupby("wallet")[wallet_pnl_metric].sum().to_dict()
         if not train_grouped.empty
         else {}
     )

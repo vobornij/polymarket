@@ -92,25 +92,41 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
 
     group['dt_1h'] = group['dt_floored'].dt.floor('1h')
 
+    group['dt_1h'] = group['dt_floored'].dt.floor('1h')
+    bucket_pnls = group.groupby(['dt_1h', 'condition_id'], sort=False)["pnl"].sum()
+    market_pnls = group.groupby("condition_id", sort=False)["pnl"].sum()
+
+    abs_market_pnls = market_pnls.abs()
+    abs_market_total = abs_market_pnls.sum()
+    if abs_market_total > 0:
+        market_weights = abs_market_pnls / abs_market_total
+        top_market_abs_pnl_pct = abs_market_pnls.max() / abs_market_total
+        market_pnl_hhi = float(np.square(market_weights).sum())
+    else:
+        top_market_abs_pnl_pct = float("nan")
+        market_pnl_hhi = float("nan")
+
+    positive_bucket_share = float((bucket_pnls > 0).mean()) if len(bucket_pnls) else float("nan")
+
     if total_pnl <= 0:
         top5_pnl_pct = float("nan")
+        top10_pnl_pct = float("nan")
         worst5_pnl_pct = float("nan")
         top_market_pnl_pct = float("nan")
         median_roi = float("nan")
         average_roi = float("nan")
     else:
-        # op5_pnl = np.sort(pnl)[-5:].sum()
-        bucket_pnls = group.groupby(['dt_1h', 'condition_id'], sort=False)["pnl"].sum()
-        # Take the top 5 buckets by PnL (largest positive values)
+        # Take top-N hourly market buckets by PnL contribution.
         top5_pnl = bucket_pnls.sort_values(ascending=False).iloc[:5].sum()
         top5_pnl_pct = top5_pnl / total_pnl
+        top10_pnl = bucket_pnls.sort_values(ascending=False).iloc[:10].sum()
+        top10_pnl_pct = top10_pnl / total_pnl
         # Take the worst 5 buckets by PnL (largest negative values)
         worst5_pnl = bucket_pnls.sort_values(ascending=True).iloc[:5].sum()
         worst5_pnl_pct = worst5_pnl / total_pnl
-        
-        top_market_pnl_pct = (
-            group.groupby("condition_id")["pnl"].sum().max() / total_pnl
 
+        top_market_pnl_pct = (
+            market_pnls.max() / total_pnl
         )
         median_roi = (pnl / group["notional"]).median()
         average_roi = (pnl / group["notional"]).mean()
@@ -123,8 +139,12 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
             "total_pnl": total_pnl,
             "copyable_pnl": total_copyable_pnl,
             "top5_pnl_pct": top5_pnl_pct,
+            "top10_pnl_pct": top10_pnl_pct,
             "worst5_pnl_pct": worst5_pnl_pct,
             "top_market_pnl_pct": top_market_pnl_pct,
+            "top_market_abs_pnl_pct": top_market_abs_pnl_pct,
+            "market_pnl_hhi": market_pnl_hhi,
+            "positive_bucket_share": positive_bucket_share,
             "median_roi": median_roi,
             "median_dt": group["dt_floored"].median(),
             "average_roi": average_roi,
@@ -190,7 +210,9 @@ def compute_wallet_metrics(
 
     empty_cols = [
         "wallet", "pnl_volatility", "num_buckets", "num_markets",
-        "total_notional", "total_pnl", "top5_pnl_pct", "worst5_pnl_pct", "top_market_pnl_pct", "median_roi", "average_roi", "return",
+        "total_notional", "total_pnl", "top5_pnl_pct", "top10_pnl_pct",
+        "worst5_pnl_pct", "top_market_pnl_pct", "top_market_abs_pnl_pct",
+        "market_pnl_hhi", "positive_bucket_share", "median_roi", "average_roi", "return",
     ]
 
     if buckets.empty:
