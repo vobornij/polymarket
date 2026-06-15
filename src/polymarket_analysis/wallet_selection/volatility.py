@@ -135,6 +135,7 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
             "pnl_volatility": scaled_weighted_pnl_volatility(group),
             "num_buckets": len(group),
             "num_markets": group["condition_id"].nunique(),
+            "trade_count": group["trade_count"].sum(),
             "total_notional": total_notional,
             "total_pnl": total_pnl,
             "copyable_pnl": total_copyable_pnl,
@@ -203,6 +204,7 @@ def compute_wallet_metrics(
             copyable_pnl=("copyable_pnl", "sum"),
             quantity=("quantity", "sum"),
             copyable_qty=("copyable_qty", "sum"),
+            trade_count=("pnl", "size"),
             )
         .reset_index()
     )
@@ -212,7 +214,7 @@ def compute_wallet_metrics(
         "wallet", "pnl_volatility", "num_buckets", "num_markets",
         "total_notional", "total_pnl", "top5_pnl_pct", "top10_pnl_pct",
         "worst5_pnl_pct", "top_market_pnl_pct", "top_market_abs_pnl_pct",
-        "market_pnl_hhi", "positive_bucket_share", "median_roi", "average_roi", "return",
+        "market_pnl_hhi", "positive_bucket_share", "median_roi", "average_roi", "return", "trade_count",
     ]
 
     if buckets.empty:
