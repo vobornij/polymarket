@@ -35,7 +35,7 @@ _READ_COLS = [
     "wallet", "side", "copyable_qty", "avail_copy_total_vol", "avail_copy_count",
 ]
 
-_GROUP_KEYS = ["tx_hash", "wallet", "side"]
+_GROUP_KEYS = ["tx_hash", "wallet", "side", "token_id"]
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +186,7 @@ def enrich_and_group_shard(
 
     raw["token_id"] = raw["token_id"].astype(str)
     enriched = raw.merge(
-        token_lookup_df[["token_id", "token_winner", "final_price"]],
+        token_lookup_df[["token_id", "token_winner", "final_price", "last_condition_trade_ts"]],
         on="token_id",
         how="inner",
     )
@@ -202,7 +202,7 @@ def enrich_and_group_shard(
     enriched["final_value_usdc"] = enriched["quantity"] * enriched["final_price"]
     enriched["price_x_qty"] = enriched["price"] * enriched["quantity"]
 
-    # Group fills → one row per tx_hash × wallet × side
+    # Group fills → one row per tx_hash × wallet × side × token_id
     grouped = (
         enriched.groupby(_GROUP_KEYS, sort=False)
         .agg(
@@ -211,6 +211,7 @@ def enrich_and_group_shard(
             outcome          = ("outcome",          "first"),
             token_winner     = ("token_winner",     "first"),
             final_price      = ("final_price",      "first"),
+            last_condition_trade_ts = ("last_condition_trade_ts", "first"),
             position         = ("position",         "max"),
             total_quantity   = ("quantity",         "sum"),
             price_x_qty_sum  = ("price_x_qty",     "sum"),
