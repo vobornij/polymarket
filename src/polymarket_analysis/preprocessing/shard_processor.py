@@ -58,7 +58,7 @@ def select_top_wallets_shard(
     token_lookup_df:
         DataFrame with columns ``[token_id, token_winner, final_price]``.
     end_train_ts:
-        Upper bound (exclusive) for the training period.
+        Train data has resolution < *end_train_ts*.
     top_pct:
         Fraction of wallets to keep per shard (default 4 %).
 
@@ -90,7 +90,7 @@ def select_top_wallets_shard(
     raw["token_id"] = raw["token_id"].astype(str)
     raw['ts'] = pd.to_datetime(raw['block_timestamp'], utc=True)
     enriched = raw.merge(
-        token_lookup_df[["token_id", "final_price"]],
+        token_lookup_df,
         on="token_id",
         how="inner",
     )
@@ -102,7 +102,7 @@ def select_top_wallets_shard(
     stats["in_range_rows"] = len(enriched)
 
     # Restrict to training period only
-    train = enriched[enriched["dt"] < end_train_ts].copy()
+    train = enriched[enriched["last_condition_trade_ts"] < end_train_ts].copy()
     if train.empty:
         return {}, stats
 
@@ -163,7 +163,7 @@ def enrich_and_group_shard(
     token_lookup_df:
         DataFrame with columns ``[token_id, token_winner, final_price]``.
     end_train_ts:
-        Used to label ``is_train`` and to compute per-wallet training P&L.
+        threshold of resolution time
     top_wallets:
         Set of wallet addresses to keep.  Rows for other wallets are dropped.
     wallet_pnl_metric:
@@ -244,7 +244,7 @@ def enrich_and_group_shard(
         )
 
     # Per-wallet training P&L from this shard
-    train_grouped = grouped[grouped["dt"] < end_train_ts]
+    train_grouped = grouped[grouped["last_condition_trade_ts"] < end_train_ts]
     wallet_train_pnl: dict[str, float] = (
         train_grouped.groupby("wallet")[wallet_pnl_metric].sum().to_dict()
         if not train_grouped.empty
