@@ -89,8 +89,8 @@ def compute_future_better_price_qty(df: pd.DataFrame, window: datetime.timedelta
                 bit_count.update(pidx[add_ptr], 1)
             add_ptr += 1
 
-        #remove trades with the same hash
-        while remove_ptr < n and tx_hash[remove_ptr] == tx_hash[i]:
+        #remove trades with the same timestamp as the current trade, since they are not "future" trades
+        while remove_ptr < n and ts[remove_ptr] == ts[i]:
             if (is_token[remove_ptr] and side[remove_ptr] == "BUY") or (not is_token[remove_ptr] and side[remove_ptr] == "SELL"):
                 bit_qty.update(pidx[remove_ptr], -qty[remove_ptr])
                 bit_vol.update(pidx[remove_ptr], -qty[remove_ptr] * t_price[remove_ptr])
