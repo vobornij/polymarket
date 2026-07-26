@@ -33,7 +33,8 @@ import pandas as pd
 
 DEFAULT_TRADES_DIR = Path("../../data/polygon_trades_processed")
 DEFAULT_WORKSPACE_DIR = Path("../../data/trade_signals_workspace_v2")
-DEFAULT_TAGS = {"Weather"}
+DEFAULT_TAGS = {"Politics"}
+# DEFAULT_TAGS = {"Weather"}
 
 RESULTS_DIR = Path(__file__).parent  # same directory as this file
 
@@ -129,23 +130,43 @@ def load_trades(
 
 def split_data(
     df_full: pd.DataFrame,
-    train_end: str = "2026-06-04",
-    val_end: str = "2026-06-30",
+    train_end: str | None = None,
+    val_end: str | None = None,
+    train_pct: float = 0.70,
+    val_pct: float = 0.15,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Split trades by market end date into train / val / test."""
-    train_end_ts = pd.Timestamp(train_end, tz="UTC")
-    val_end_ts = pd.Timestamp(val_end, tz="UTC")
+    """Split trades by market end date into train / val / test.
 
+    If *train_end* / *val_end* are ``None``, they are determined from the
+    data using *train_pct* and *val_pct* quantiles of ``end_date_iso``.
+    """
     end_dates = pd.to_datetime(df_full["end_date_iso"], utc=True)
+    date_min = end_dates.min()
+    date_max = end_dates.max()
+    date_range = date_max - date_min
+
+    if train_end is None:
+        train_end_ts = date_min + date_range * train_pct
+    else:
+        train_end_ts = pd.Timestamp(train_end, tz="UTC")
+
+    if val_end is None:
+        val_end_ts = train_end_ts + date_range * val_pct
+    else:
+        val_end_ts = pd.Timestamp(val_end, tz="UTC")
 
     df_train = df_full[end_dates <= train_end_ts].copy()
     df_val = df_full[(end_dates > train_end_ts) & (end_dates <= val_end_ts)].copy()
     df_test = df_full[end_dates > val_end_ts].copy()
 
-    print(f"Train:  {len(df_train):>12,} trades  ({df_train['condition_id'].nunique():,} markets)")
-    print(f"Val:    {len(df_val):>12,} trades  ({df_val['condition_id'].nunique():,} markets)")
-    print(f"Test:   {len(df_test):>12,} trades  ({df_test['condition_id'].nunique():,} markets)")
-    print(f"Total:  {len(df_full):>12,} trades  ({df_full['condition_id'].nunique():,} markets)")
+    print(f"Data range:  {date_min:%Y-%m-%d} .. {date_max:%Y-%m-%d}")
+    print(f"Train end:   {train_end_ts:%Y-%m-%d}")
+    print(f"Val end:     {val_end_ts:%Y-%m-%d}")
+    print()
+    print(f"  Train: {len(df_train):>10,} trades  ({df_train['condition_id'].nunique():>5,} markets)  .. {train_end_ts:%Y-%m-%d}")
+    print(f"  Val:   {len(df_val):>10,} trades  ({df_val['condition_id'].nunique():>5,} markets)  .. {val_end_ts:%Y-%m-%d}")
+    print(f"  Test:  {len(df_test):>10,} trades  ({df_test['condition_id'].nunique():>5,} markets)  .. {date_max:%Y-%m-%d}")
+    print(f"  Total: {len(df_full):>10,} trades  ({df_full['condition_id'].nunique():>5,} markets)")
     return df_train, df_val, df_test
 
 
@@ -246,7 +267,8 @@ def select_follower_wallets(
     *,
     min_copyable_roi: float = 0.05,
     min_trade_value: float = 100.0,
-    min_open_buys: int = 10,
+    min_num_buckets: int = 10,
+    max_market_pnl_hhi: float = 0.3,
 ) -> pd.DataFrame:
     """Select follower wallets with positive copyable ROI and sufficient activity.
 
@@ -257,7 +279,8 @@ def select_follower_wallets(
         (c["copyable_pnl"] > 0)
         & (c["copyable_roi"] >= min_copyable_roi)
         & (c["total_notional"] >= min_trade_value)
-        & (c["num_buckets"] >= min_open_buys)
+        & (c["num_buckets"] >= min_num_buckets)
+        & (c["market_pnl_hhi"].fillna(0.20) <= max_market_pnl_hhi)
     )
     result = c[mask].copy()
     return result.sort_values("copyable_roi", ascending=False).reset_index(drop=True)
@@ -368,6 +391,108 @@ def detect_implied_buys(
     return implied.reset_index(drop=True)
 
 
+def evaluate_follower_buy_performance(
+    df: pd.DataFrame,
+    follower_wallets: set[str],
+) -> dict:
+    """Compute total wallet and copyable PnL/ROI across ALL buy trades by follower wallets.
+
+    Returns aggregate buy-trade performance regardless of leader presence.
+    """
+    if not follower_wallets:
+        return {"wallet_pnl": 0.0, "wallet_roi": 0.0, "wallet_notional": 0.0,
+                "followed_copyable_pnl": 0.0, "followed_copyable_roi": 0.0, "trade_count": 0}
+
+    buys = df[
+        (df["wallet"].isin(follower_wallets))
+        & (df["side"] == "BUY")
+    ]
+    if buys.empty:
+        return {"wallet_pnl": 0.0, "wallet_roi": 0.0, "wallet_notional": 0.0,
+                "followed_copyable_pnl": 0.0, "followed_copyable_roi": 0.0, "trade_count": 0}
+
+    notional = float(buys["notional"].sum())
+    pnl = float(buys["pnl"].sum())
+    cpnl = float(buys["copyable_pnl"].sum()) if "copyable_pnl" in buys.columns else 0.0
+    cnot = float(buys["copyable_notional"].sum()) if "copyable_notional" in buys.columns else 0.0
+    return {
+        "wallet_pnl": pnl,
+        "wallet_roi": pnl / notional if notional > 0 else 0.0,
+        "wallet_notional": notional,
+        "followed_copyable_pnl": cpnl,
+        "followed_copyable_roi": cpnl / cnot if cnot > 0 else 0.0,
+        "trade_count": len(buys),
+    }
+
+
+def evaluate_leader_performance(
+    df: pd.DataFrame,
+    leader_wallets: set[str],
+    *,
+    side: str = "BUY",
+) -> dict:
+    """Compute total PnL/ROI for leader wallets on their own trades of *side*."""
+    if not leader_wallets:
+        return {"pnl": 0.0, "roi": 0.0, "notional": 0.0, "trade_count": 0}
+
+    trades = df[
+        (df["wallet"].isin(leader_wallets))
+        & (df["side"] == side)
+    ]
+    if trades.empty:
+        return {"pnl": 0.0, "roi": 0.0, "notional": 0.0, "trade_count": 0}
+
+    notional = float(trades["notional"].sum())
+    pnl = float(trades["pnl"].sum())
+    return {
+        "pnl": pnl,
+        "roi": pnl / notional if notional > 0 else 0.0,
+        "notional": notional,
+        "trade_count": len(trades),
+    }
+
+
+def evaluate_leader_followed_performance(
+    df: pd.DataFrame,
+    implied: pd.DataFrame,
+    leader_wallets: set[str],
+    *,
+    leader_side: str = "BUY",
+) -> dict:
+    """Compute PnL/ROI for leader trades that were actually followed.
+
+    *implied* is the output of :func:`detect_implied_buys` for the
+    corresponding *leader_side*.  Leader trades are deduplicated
+    (one row per leader_wallet × condition_id × outcome × leader_dt)
+    and joined back to *df* to retrieve their PnL.
+    """
+    if not leader_wallets or implied.empty:
+        return {"pnl": 0.0, "roi": 0.0, "notional": 0.0, "trade_count": 0}
+
+    leader_trades = (
+        implied[["leader_wallet", "condition_id", "outcome", "leader_dt"]]
+        .drop_duplicates()
+        .rename(columns={"leader_wallet": "wallet", "leader_dt": "dt"})
+    )
+
+    merged = leader_trades.merge(
+        df[["wallet", "condition_id", "outcome", "dt", "pnl", "notional"]],
+        on=["wallet", "condition_id", "outcome", "dt"],
+        how="inner",
+    )
+    if merged.empty:
+        return {"pnl": 0.0, "roi": 0.0, "notional": 0.0, "trade_count": 0}
+
+    notional = float(merged["notional"].sum())
+    pnl = float(merged["pnl"].sum())
+    return {
+        "pnl": pnl,
+        "roi": pnl / notional if notional > 0 else 0.0,
+        "notional": notional,
+        "trade_count": len(merged),
+    }
+
+
 def score_leaders(implied_trades: pd.DataFrame) -> pd.DataFrame:
     """Aggregate implied trades into per-leader scores.
 
@@ -412,17 +537,27 @@ def evaluate_implied_pnl(
         return {
             "pnl": 0.0,
             "roi": 0.0,
-            "copyable_pnl": 0.0,
-            "copyable_roi": 0.0,
+            "followed_copyable_pnl": 0.0,
+            "followed_copyable_notional": 0.0,
+            "followed_copyable_roi": 0.0,
+            "wallet_pnl": 0.0,
+            "wallet_roi": 0.0,
+            "wallet_notional": 0.0,
             "trade_count": 0,
             "wallet_count": 0,
             "leader_count": 0,
         }
+    wallet_notional = float(implied["notional"].sum())
+    copyable_notional = float(implied["copyable_notional"].sum())
     return {
         "pnl": float(implied["pnl"].sum()),
         "roi": float(implied["pnl"].sum() / implied["notional"].sum()),
-        "copyable_pnl": float(implied["copyable_pnl"].sum()),
-        "copyable_roi": float(implied["copyable_pnl"].sum() / implied["copyable_notional"].sum()),
+        "followed_copyable_pnl": float(implied["copyable_pnl"].sum()),
+        "followed_copyable_notional": copyable_notional,
+        "followed_copyable_roi": float(implied["copyable_pnl"].sum() / implied["copyable_notional"].sum()),
+        "wallet_pnl": float(implied["pnl"].sum()),
+        "wallet_roi": float(implied["pnl"].sum() / wallet_notional) if wallet_notional > 0 else 0.0,
+        "wallet_notional": wallet_notional,
         "trade_count": len(implied),
         "wallet_count": int(implied["follower_wallet"].nunique()),
         "leader_count": int(implied["leader_wallet"].nunique()),
@@ -430,11 +565,151 @@ def evaluate_implied_pnl(
 
 
 # ---------------------------------------------------------------------------
+# 3b-ii. Iterative leader–follower refinement
+# ---------------------------------------------------------------------------
+
+
+def iterative_leader_follower_filter(
+    df: pd.DataFrame,
+    follower_wallets: set[str],
+    buy_leader_wallets: set[str],
+    sell_leader_wallets: set[str],
+    *,
+    time_window_minutes: int = 10,
+    n_iterations: int = 1,
+    leader_min_copyable_pnl: float | None = None,
+    follower_min_copyable_pnl: float = 20.0,
+    follower_min_copyable_roi: float | None = None,
+) -> tuple[set[str], set[str], set[str], list[dict], list[tuple[set[str], set[str], set[str]]]]:
+    """Iteratively refine leader and follower sets by implied-trade profitability.
+
+    Each iteration:
+
+    1. Detect implied trades with current leader sets.
+    2. Score leaders by their followers' total implied copyable PnL.
+       Drop leaders below ``leader_min_copyable_pnl`` (skipped if *None*).
+    3. Re-detect implied trades with the refined leader sets.
+    4. Score followers by their own implied copyable PnL (and optionally
+       copyable ROI).  Drop followers below ``follower_min_copyable_pnl``
+       and, if set, ``follower_min_copyable_roi``.
+
+    Scoring is done on *df* (typically the training split).
+
+    Returns
+    -------
+    (follower_wallets, buy_leader_wallets, sell_leader_wallets, log, snapshots)
+        where *log* is a list of dicts with per-iteration stats, and
+        *snapshots* is a list of (followers, buy_leaders, sell_leaders) tuples
+        at each iteration (index 0 = before any refinement).
+    """
+    cur_followers = set(follower_wallets)
+    cur_buy_leaders = set(buy_leader_wallets)
+    cur_sell_leaders = set(sell_leader_wallets)
+    n_iterations = int(n_iterations)
+
+    log: list[dict] = []
+    snapshots: list[tuple[set[str], set[str], set[str]]] = []
+
+    def _snapshot() -> None:
+        snapshots.append((set(cur_followers), set(cur_buy_leaders), set(cur_sell_leaders)))
+        log.append({
+            "iteration": len(snapshots) - 1,
+            "followers": len(cur_followers),
+            "buy_leaders": len(cur_buy_leaders),
+            "sell_leaders": len(cur_sell_leaders),
+        })
+
+    _snapshot()
+
+    for i in range(1, n_iterations + 1):
+        # --- Step 1: detect implied trades with current leaders ---
+        buy_implied = detect_implied_buys(
+            df, cur_followers, cur_buy_leaders,
+            time_window_minutes=time_window_minutes, leader_side="BUY",
+        )
+        sell_implied = detect_implied_buys(
+            df, cur_followers, cur_sell_leaders,
+            time_window_minutes=time_window_minutes, leader_side="SELL",
+        )
+
+        # --- Step 2: score & filter leaders ---
+        if leader_min_copyable_pnl is not None:
+            if not buy_implied.empty:
+                buy_leader_scores = (
+                    buy_implied.groupby("leader_wallet", sort=False)["copyable_pnl"]
+                    .sum().reset_index()
+                    .rename(columns={"copyable_pnl": "total_copyable_pnl"})
+                )
+                good_buy_leaders = set(
+                    buy_leader_scores.loc[
+                        buy_leader_scores["total_copyable_pnl"] >= leader_min_copyable_pnl,
+                        "leader_wallet",
+                    ]
+                )
+                cur_buy_leaders = cur_buy_leaders & good_buy_leaders
+
+            if not sell_implied.empty:
+                sell_leader_scores = (
+                    sell_implied.groupby("leader_wallet", sort=False)["copyable_pnl"]
+                    .sum().reset_index()
+                    .rename(columns={"copyable_pnl": "total_copyable_pnl"})
+                )
+                good_sell_leaders = set(
+                    sell_leader_scores.loc[
+                        sell_leader_scores["total_copyable_pnl"] >= leader_min_copyable_pnl,
+                        "leader_wallet",
+                    ]
+                )
+                cur_sell_leaders = cur_sell_leaders & good_sell_leaders
+
+        # --- Step 3: re-detect with refined leaders ---
+        buy_implied = detect_implied_buys(
+            df, cur_followers, cur_buy_leaders,
+            time_window_minutes=time_window_minutes, leader_side="BUY",
+        )
+        sell_implied = detect_implied_buys(
+            df, cur_followers, cur_sell_leaders,
+            time_window_minutes=time_window_minutes, leader_side="SELL",
+        )
+
+        # --- Step 4: score & filter followers by copyable_pnl (+ optional roi) ---
+        combined = pd.concat([buy_implied, sell_implied], ignore_index=True)
+        if not combined.empty:
+            follower_scores = (
+                combined.groupby("follower_wallet", sort=False)
+                .agg(total_copyable_pnl=("copyable_pnl", "sum"),
+                     total_copyable_notional=("copyable_notional", "sum"))
+                .reset_index()
+            )
+            follower_scores["copyable_roi"] = (
+                follower_scores["total_copyable_pnl"]
+                / follower_scores["total_copyable_notional"].clip(lower=1e-9)
+            )
+            mask = follower_scores["total_copyable_pnl"] >= follower_min_copyable_pnl
+            if follower_min_copyable_roi is not None:
+                mask = mask & (follower_scores["copyable_roi"] >= follower_min_copyable_roi)
+            good_followers = set(follower_scores.loc[mask, "follower_wallet"])
+            cur_followers = cur_followers & good_followers
+
+        _snapshot()
+
+    return cur_followers, cur_buy_leaders, cur_sell_leaders, log, snapshots
+
+
+# ---------------------------------------------------------------------------
 # 3c. Parallel grid search for implied trades
 # ---------------------------------------------------------------------------
 
 _IWV: pd.DataFrame | None = None
-_IDV: pd.DataFrame | None = None
+_IDF: pd.DataFrame | None = None  # training trades for iterative refinement
+_IDV: pd.DataFrame | None = None  # validation trades for cutoff filter + scoring
+
+
+def _init_worker(wallet_vol: pd.DataFrame, df_train: pd.DataFrame, df_val: pd.DataFrame) -> None:
+    global _IWV, _IDF, _IDV
+    _IWV = wallet_vol
+    _IDF = df_train
+    _IDV = df_val
 
 
 def _implied_grid_eval_one(params: dict) -> dict:
@@ -446,7 +721,8 @@ def _implied_grid_eval_one(params: dict) -> dict:
                 _IWV,
                 min_copyable_roi=params["min_follower_copyable_roi"],
                 min_trade_value=params["min_follower_trade_value"],
-                min_open_buys=params["min_follower_open_buys"],
+                min_num_buckets=params["min_follower_num_buckets"],
+                max_market_pnl_hhi=params.get("max_follower_hhi", 0.3),
             )["wallet"]
         )
         buy_leader_ws = set(
@@ -469,6 +745,53 @@ def _implied_grid_eval_one(params: dict) -> dict:
         )
 
         tw = params["time_window_minutes"]
+
+        # Iterative refinement on training data
+        n_iter = int(params.get("n_iterations", 0))
+        if n_iter > 0:
+            follower_ws, buy_leader_ws, sell_leader_ws, _, _ = (
+                iterative_leader_follower_filter(
+                    _IDF,
+                    follower_ws, buy_leader_ws, sell_leader_ws,
+                    time_window_minutes=tw,
+                    n_iterations=n_iter,
+                    leader_min_copyable_pnl=params.get("leader_min_copyable_pnl"),
+                    follower_min_copyable_pnl=params.get("follower_min_copyable_pnl", 20.0),
+                    follower_min_copyable_roi=params.get("follower_min_copyable_roi"),
+                )
+            )
+
+        # Final follower filter by copyable_roi on validation data
+        follower_min_copyable_roi_cutoff = params.get("follower_min_copyable_roi_cutoff")
+        if follower_min_copyable_roi_cutoff is not None:
+            buy_imp = detect_implied_buys(
+                _IDV, follower_ws, buy_leader_ws,
+                time_window_minutes=tw, leader_side="BUY",
+            )
+            sell_imp = detect_implied_buys(
+                _IDV, follower_ws, sell_leader_ws,
+                time_window_minutes=tw, leader_side="SELL",
+            )
+            combined = pd.concat([buy_imp, sell_imp], ignore_index=True)
+            if not combined.empty:
+                f_scores = (
+                    combined.groupby("follower_wallet", sort=False)
+                    .agg(total_copyable_pnl=("copyable_pnl", "sum"),
+                         total_copyable_notional=("copyable_notional", "sum"))
+                    .reset_index()
+                )
+                f_scores["copyable_roi"] = (
+                    f_scores["total_copyable_pnl"]
+                    / f_scores["total_copyable_notional"].clip(lower=1e-9)
+                )
+                follower_ws = follower_ws & set(
+                    f_scores.loc[
+                        (f_scores["total_copyable_pnl"] >= params.get("follower_min_copyable_pnl", 20.0))
+                        & (f_scores["copyable_roi"] >= follower_min_copyable_roi_cutoff),
+                        "follower_wallet",
+                    ]
+                )
+
         buy_ev = evaluate_implied_pnl(
             _IDV, follower_ws, buy_leader_ws,
             time_window_minutes=tw, leader_side="BUY",
@@ -481,18 +804,18 @@ def _implied_grid_eval_one(params: dict) -> dict:
         # Filter by min_pair_interactions
         min_pi = params["min_pair_interactions"]
         if buy_ev["trade_count"] < min_pi:
-            buy_ev["total_copyable_pnl"] = 0.0
+            buy_ev["followed_copyable_pnl"] = 0.0
         if sell_ev["trade_count"] < min_pi:
-            sell_ev["total_copyable_pnl"] = 0.0
+            sell_ev["followed_copyable_pnl"] = 0.0
 
-        total_pnl = buy_ev["total_copyable_pnl"] + sell_ev["total_copyable_pnl"]
+        total_pnl = buy_ev["followed_copyable_pnl"] + sell_ev["followed_copyable_pnl"]
         elapsed = time.time() - t0
 
         return {
             **params,
             "implied_copyable_pnl": total_pnl,
-            "buy_pnl": buy_ev["total_copyable_pnl"],
-            "sell_pnl": sell_ev["total_copyable_pnl"],
+            "buy_pnl": buy_ev["followed_copyable_pnl"],
+            "sell_pnl": sell_ev["followed_copyable_pnl"],
             "buy_trades": buy_ev["trade_count"],
             "sell_trades": sell_ev["trade_count"],
             "buy_leaders": buy_ev["leader_count"],
@@ -507,15 +830,16 @@ def _implied_grid_eval_one(params: dict) -> dict:
 def run_implied_grid_search(
     param_grid: dict[str, list],
     wallet_vol: pd.DataFrame,
+    df_train: pd.DataFrame,
     df_val: pd.DataFrame,
     n_workers: int | None = 8,
 ) -> pd.DataFrame:
-    """Run parallel grid search over implied-trade selection parameters."""
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    """Run parallel grid search over implied-trade selection parameters.
 
-    global _IWV, _IDV
-    _IWV = wallet_vol
-    _IDV = df_val
+    *df_train* is used for iterative wallet refinement (if ``n_iterations > 0``).
+    *df_val* is used for both the follower ROI cutoff filter and scoring configs.
+    """
+    from concurrent.futures import ProcessPoolExecutor, as_completed
 
     keys = list(param_grid.keys())
     combos = list(itertools.product(*param_grid.values()))
@@ -523,7 +847,11 @@ def run_implied_grid_search(
 
     t_start = time.time()
     results_log = []
-    with ThreadPoolExecutor(max_workers=n_workers) as pool:
+    with ProcessPoolExecutor(
+        max_workers=n_workers,
+        initializer=_init_worker,
+        initargs=(wallet_vol, df_train, df_val),
+    ) as pool:
         futures = {
             pool.submit(_implied_grid_eval_one, dict(zip(keys, v))): i
             for i, v in enumerate(combos)
