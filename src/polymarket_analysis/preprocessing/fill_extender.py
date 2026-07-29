@@ -31,7 +31,7 @@ def compute_future_better_price_qty(df: pd.DataFrame, window: datetime.timedelta
     For each trade, compute the total quantity of trades in the next `window` that have a better price.
     Better price = lower for buys, higher for sells.
     """
-    df = df.sort_values("ts").reset_index(drop=True)
+    df = df.sort_values(["ts", "tx_hash"]).reset_index(drop=True)
     if(df.empty):
         df["avail_copy_qty"] = []
         df["avail_copy_total_vol"] = []

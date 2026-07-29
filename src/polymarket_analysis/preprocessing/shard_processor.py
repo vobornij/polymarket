@@ -32,7 +32,8 @@ import pandas as pd
 _READ_COLS = [
     "tx_hash", "log_index", "block_timestamp", "trade_date", "condition_id",
     "token_id", "outcome", "price", "quantity", "usdc_amount", "position",
-    "wallet", "side", "copyable_qty", "avail_copy_total_vol", "avail_copy_count",
+    "wallet", "side", "avail_copy_qty", "copyable_qty", "avail_copy_total_vol",
+    "avail_copy_count",
 ]
 
 _GROUP_KEYS = ["tx_hash", "wallet", "side", "token_id"]
@@ -218,12 +219,15 @@ def enrich_and_group_shard(
             trade_value_usdc = ("usdc_amount",      "sum"),
             final_value_usdc = ("final_value_usdc", "sum"),
             num_fills        = ("log_index",        "count"),
+            avail_copy_qty = ("avail_copy_qty", "max"),
             copyable_qty    = ("copyable_qty",   "sum"),
             avail_copy_total_vol = ("avail_copy_total_vol", "sum"),
             avail_copy_count  = ("avail_copy_count", "sum"),
         )
         .reset_index()
     )
+
+    grouped["copyable_qty"] = grouped["total_quantity"].clip(upper=grouped["avail_copy_qty"])
 
     is_buy = grouped["side"] == "BUY"
     grouped["trade_pnl"] = np.where(
