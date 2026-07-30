@@ -836,6 +836,77 @@ def filter_leaders_by_drawdown(
     return passed
 
 
+def filter_followers_by_drawdown(
+    buy_implied: pd.DataFrame,
+    sell_implied: pd.DataFrame,
+    *,
+    max_dd_pnl_ratio: float = 0.3,
+) -> set[str]:
+    """Keep followers whose implied copyable PnL has low drawdown relative to total.
+
+    For each follower, computes cumulative PnL over time from combined buy+sell
+    implied trades. Filters out followers where max_drawdown / total_pnl > max_dd_pnl_ratio.
+    """
+    combined = pd.concat([buy_implied, sell_implied], ignore_index=True)
+    if combined.empty:
+        return set()
+
+    combined = combined.sort_values("follower_dt")
+
+    passed = set()
+    for follower, grp in combined.groupby("follower_wallet"):
+        cum_pnl = grp.set_index("follower_dt")["copyable_pnl"].cumsum()
+        total_pnl = cum_pnl.iloc[-1]
+        if total_pnl <= 0:
+            continue
+
+        running_max = cum_pnl.cummax()
+        max_dd = abs((cum_pnl - running_max).min())
+        if max_dd / total_pnl <= max_dd_pnl_ratio:
+            passed.add(follower)
+
+    return passed
+
+
+def filter_followers_by_val_roi(
+    df_val: pd.DataFrame,
+    follower_wallets: set[str],
+    buy_leader_wallets: set[str],
+    sell_leader_wallets: set[str],
+    *,
+    time_window_minutes: int = 15,
+    min_val_roi: float = 0.0,
+) -> set[str]:
+    """Keep followers whose implied copyable ROI >= min_val_roi on the validation split.
+
+    Detects implied trades on *df_val* with the given leader/follower sets,
+    computes each follower's copyable ROI, and returns only those meeting
+    the threshold.  This uses the validation period as a generalization check.
+    """
+    if not follower_wallets:
+        return set()
+
+    buy_imp = detect_implied_buys(
+        df_val, follower_wallets, buy_leader_wallets,
+        time_window_minutes=time_window_minutes, leader_side="BUY",
+    )
+    sell_imp = detect_implied_buys(
+        df_val, follower_wallets, sell_leader_wallets,
+        time_window_minutes=time_window_minutes, leader_side="SELL",
+    )
+    combined = pd.concat([buy_imp, sell_imp], ignore_index=True)
+    if combined.empty:
+        return set()
+
+    agg = combined.groupby("follower_wallet").agg(
+        pnl=("copyable_pnl", "sum"),
+        notional=("copyable_notional", "sum"),
+    )
+    agg["roi"] = agg["pnl"] / agg["notional"].clip(lower=1e-9)
+    profitable = set(agg[agg["roi"] >= min_val_roi].index)
+    return profitable & follower_wallets
+
+
 def filter_pairs_by_frequency(
     implied: pd.DataFrame,
     min_observations: int = 3,

@@ -118,6 +118,8 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
         median_roi = float("nan")
         average_roi = float("nan")
         buy_roi = float("nan")
+        buy_notional = float("nan")
+        buy_copyable_pnl = float("nan")
         sell_roi = float("nan")
     else:
         # Take top-N hourly market buckets by PnL contribution.
@@ -135,6 +137,7 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
         median_roi = (pnl / group["notional"]).median()
         average_roi = (pnl / group["notional"]).mean()
         buy_pnl = group.loc[group["side"] == "BUY", "pnl"].sum()
+        buy_copyable_pnl = group.loc[group["side"] == "BUY", "copyable_pnl"].sum()
         buy_notional = group.loc[group["side"] == "BUY", "notional"].sum()
         buy_roi = buy_pnl / buy_notional if buy_notional > 0 else float("nan")
         sell_pnl = group.loc[group["side"] == "SELL", "pnl"].sum()
@@ -160,6 +163,10 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
             "median_dt": group["dt_floored"].median(),
             "average_roi": average_roi,
             "buy_roi": buy_roi,
+            "buy_pnl": buy_pnl,
+            "buy_notional": buy_notional,
+            "buy_copyable_pnl": buy_copyable_pnl,
+            "sell_pnl": sell_pnl,
             "sell_roi": sell_roi,
             "max_drawdown": max_drawdown,
             "max_drawdown_to_pnl": max_drawdown / total_pnl if total_pnl > 0 else float("nan"),
@@ -175,7 +182,7 @@ def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
 
 def compute_wallet_metrics(
     df_slice: pd.DataFrame,
-    bucket_freq: str = "5min",
+    bucket_freq: str = "1s",
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Compute per-wallet metrics from a fills DataFrame.
 
