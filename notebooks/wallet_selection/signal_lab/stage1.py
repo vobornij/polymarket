@@ -208,7 +208,7 @@ def attach_position_signal_panel(
     *,
     kinds: list[SignalKind] | None = None,
     fresh_kinds: list[SignalKind] | None = None,
-    taus_h: list[int] | None = None,
+    taus_h: list[float] | None = None,
     wallet_metrics: pd.DataFrame,
     hold_metrics: pd.DataFrame,
 ) -> tuple[dict[str, pd.DataFrame], list[str]]:
@@ -224,7 +224,7 @@ def attach_position_signal_panel(
     engine = PositionSignalEngine(trades)
     all_kinds = list(kinds or DEFAULT_SIGNAL_KINDS)
     fresh = list(fresh_kinds if fresh_kinds is not None else all_kinds)
-    taus = [int(t) for t in (taus_h or ())]
+    taus = [float(t) for t in (taus_h or ())]
 
     signal_cols: list[str] = []
     for flt in filters:
@@ -275,6 +275,43 @@ def run_strategy(
         hold_metrics=hold_metrics,
     )
     return splits, strategy.get_signal_columns()
+
+
+def run_strategies(
+    df_full: pd.DataFrame,
+    wallet_metrics: pd.DataFrame,
+    hold_metrics: pd.DataFrame,
+    strategies: list[StrategyProtocol],
+    copy_mask: WalletFilter | None = None,
+) -> tuple[dict[str, pd.DataFrame], list[str]]:
+    """Run multiple declarative strategies end-to-end on a shared universe.
+    
+    If copy_mask is None, it uses the first strategy's copy_mask.
+    """
+    if not strategies:
+        raise ValueError("Must provide at least one strategy")
+        
+    mask = copy_mask if copy_mask is not None else strategies[0].copy_mask
+    copy_wallets = set(mask(wallet_metrics, hold_metrics))
+    splits = candidate_splits_for(df_full, copy_wallets)
+    conditions: set[str] = set()
+    for frame in splits.values():
+        conditions.update(frame["condition_id"].unique())
+    trades = restrict_trades(df_full, conditions)
+    
+    all_cols = []
+    for strategy in strategies:
+        splits = strategy.calculate_signals(
+            splits,
+            trades=trades,
+            wallet_metrics=wallet_metrics,
+            hold_metrics=hold_metrics,
+        )
+        all_cols.extend(strategy.get_signal_columns())
+        
+    # Remove duplicates while preserving order
+    all_cols = list(dict.fromkeys(all_cols))
+    return splits, all_cols
 
 
 def evaluate_signal_panel(

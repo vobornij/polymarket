@@ -16,7 +16,7 @@ if str(_NOTEBOOK_DIR) not in sys.path:
 from signal_lab.stage1 import (
     evaluate_signal_panel,
     load_stage1_data,
-    run_strategy,
+    run_strategies,
 )
 from signal_lab.strategies import (
     GamblerCapitulationSqueeze,
@@ -36,30 +36,28 @@ def main():
         # Add more strategies here, or comment them out!
     ]
 
-    # 2. Run each strategy end-to-end: it rebuilds the candidate universe from
-    # its own copy-wallet filter, re-splits chronologically, re-residualizes
-    # ROI, and attaches its declared signal panel.
+    # 2. Run all strategies onto the same shared candidate universe
+    print("\nCalculating signals for all strategies combined...")
+    splits, all_cols = run_strategies(df_full, wallet_metrics, hold_metrics, strategies)
+    
+    # 3. Evaluate each strategy individually
     for strategy in strategies:
-        print(f"\nCalculating signals for strategy: {strategy.name}...")
-        splits, cols = run_strategy(df_full, wallet_metrics, hold_metrics, strategy)
-
-        # Some columns may be skipped if the archetypes don't exist.
-        actual_cols = [c for c in cols if c in splits["train"].columns]
-        if not actual_cols:
+        strat_cols = [c for c in strategy.get_signal_columns() if c in splits["train"].columns]
+        if not strat_cols:
             print(f"No signals attached for {strategy.name} (empty wallet sets?).")
             continue
-
-        print(f"Evaluating individual strategy: {strategy.name}")
-        report, _ = evaluate_signal_panel(splits, actual_cols, roi_col="roi_res")
+            
+        print(f"\nEvaluating individual strategy: {strategy.name}")
+        report, _ = evaluate_signal_panel(splits, strat_cols, roi_col="roi_res")
         print(report)
 
-    # 3. Optional: Evaluate a combined model or thresholding across all generated signals
+    # 4. Evaluate combined model
     print("\n" + "="*60)
     print("Combined Signal Evaluation (All Strategies)")
     print("="*60)
-
-    # Example: you could run compute_optimal_weights on all generated signals here
-    # to see if the combined framework improves!
+    actual_cols = [c for c in all_cols if c in splits["train"].columns]
+    report, _ = evaluate_signal_panel(splits, actual_cols, roi_col="roi_res")
+    print(report)
 
 if __name__ == "__main__":
     main()

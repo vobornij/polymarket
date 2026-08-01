@@ -52,7 +52,7 @@ class SignalStrategy(Protocol):
         ...
 
     @property
-    def taus_h(self) -> List[int]:
+    def taus_h(self) -> List[float]:
         """Fresh-signal decay taus in hours. Empty list disables fresh signals."""
         ...
 
@@ -87,7 +87,7 @@ class DeclarativeStrategy:
     signal_sets: List[WalletFilter] = []
     kinds: List[SignalKind] = []
     fresh_kinds: List[SignalKind] | None = None
-    taus_h: List[int] = []
+    taus_h: List[float] = []
 
     @property
     def name(self) -> str:

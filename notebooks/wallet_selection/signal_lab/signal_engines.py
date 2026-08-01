@@ -157,16 +157,17 @@ ALL_POSITION_KINDS = [
 # ``attach_position_signal_panel(..., taus_h=...)`` instead.
 
 
-def signal_col_name(kind: SignalKind, set_name: str, tau_h: int | None = None) -> str:
+def signal_col_name(kind: SignalKind, set_name: str, tau_h: int | float | None = None) -> str:
     """Column name for a position signal.
 
     Base families: ``sig_{family}_{var}_{set}`` (e.g. ``sig_val_opp_flipper``).
     Fresh families carry their tau in the name so multiple taus never
     overwrite each other: ``sig_{family}_{var}_{tau}h_{set}`` (e.g.
-    ``sig_fval_opp_6h_flipper``).
+    ``sig_fval_opp_24h_flipper``).
     """
     if tau_h is not None and kind.family.startswith("f"):
-        return f"sig_{kind.family}_{kind.var}_{tau_h}h_{set_name}"
+        tau_str = f"{tau_h:g}" if isinstance(tau_h, float) else str(tau_h)
+        return f"sig_{kind.family}_{kind.var}_{tau_str}h_{set_name}"
     return f"sig_{kind.family}_{kind.var}_{set_name}"
 
 
@@ -461,7 +462,7 @@ def aggregate_value(cand: pd.DataFrame, A: pd.DataFrame, B: pd.DataFrame,
 
 def attach_position_signals(df_c: pd.DataFrame, set_name: str, A: pd.DataFrame,
                             B: pd.DataFrame, by_cols=None,
-                            fresh_tau_h: int | None = None):
+                            fresh_tau_h: int | float | None = None):
     """Attach position / value-at-cost / entry-premium signal columns.
 
     Columns (``{own,opp,total}`` = candidate outcome / opposite / sum):

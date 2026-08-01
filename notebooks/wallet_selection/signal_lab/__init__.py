@@ -68,6 +68,7 @@ from .stage1 import (
     rank_normalize_splits,
     restrict_trades,
     run_strategy,
+    run_strategies,
 )
 from .strategies import (
     DeclarativeStrategy,
@@ -139,6 +140,7 @@ __all__ = [
     "residualized_roi",
     "restrict_trades",
     "run_strategy",
+    "run_strategies",
     "select_copy_wallets",
     "signal_col_name",
     "signal_quality_report",
