@@ -15,10 +15,16 @@ transforms on train only.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
+import sys
 from typing import Iterable
 
 import numpy as np
 import pandas as pd
+
+_NOTEBOOK_DIR = Path(__file__).resolve().parent.parent
+if str(_NOTEBOOK_DIR) not in sys.path:
+    sys.path.insert(0, str(_NOTEBOOK_DIR))
 
 from lib import (
     DEFAULT_TAGS,
@@ -29,18 +35,32 @@ from lib import (
 )
 from polymarket_analysis.wallet_selection.volatility import compute_wallet_metrics
 
-from .signal_engines import PositionSignalEngine, archetype_sets, compute_hold_time_metrics
-from .signal_lib import (
-    apply_composite_score,
-    apply_rank_transformer,
-    bootstrap_ic,
-    compute_event_ic,
-    compute_optimal_weights,
-    evaluate_strategy,
-    fit_rank_transformer,
-    fit_roi_residualizer,
-    residualized_roi,
-)
+try:
+    from .signal_engines import PositionSignalEngine, archetype_sets, compute_hold_time_metrics
+    from .signal_lib import (
+        apply_composite_score,
+        apply_rank_transformer,
+        bootstrap_ic,
+        compute_event_ic,
+        compute_optimal_weights,
+        evaluate_strategy,
+        fit_rank_transformer,
+        fit_roi_residualizer,
+        residualized_roi,
+    )
+except ImportError:
+    from signal_engines import PositionSignalEngine, archetype_sets, compute_hold_time_metrics  # type: ignore
+    from signal_lib import (  # type: ignore
+        apply_composite_score,
+        apply_rank_transformer,
+        bootstrap_ic,
+        compute_event_ic,
+        compute_optimal_weights,
+        evaluate_strategy,
+        fit_rank_transformer,
+        fit_roi_residualizer,
+        residualized_roi,
+    )
 
 
 DEFAULT_COPY_RULES = {
@@ -90,6 +110,9 @@ _ENGINE_COLS = [
     "quantity",
     "price",
 ]
+
+_CACHE_DIR = Path("/tmp/pos_explore_cache")
+_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @dataclass
@@ -225,6 +248,107 @@ def build_stage1_workspace(
         engine=engine,
         residual_fit=residual_fit,
     )
+
+
+def build_stage1_workspace_cached(
+    *,
+    tags: set[str] | None = DEFAULT_TAGS,
+    copy_rules: dict[str, float] | None = None,
+    archetype_min_trade_count: int = 100,
+    cache_dir: Path = _CACHE_DIR,
+    force: bool = False,
+) -> Stage1Workspace:
+    """Build the stage-1 workspace with simple parquet/pickle caching.
+
+    The first run is still expensive because it builds the full training
+    workspace. Later runs reuse the persisted frames and rebuild only the
+    lightweight engine object.
+    """
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "df_full": cache_dir / "signal_lab_df_full.parquet",
+        "df_train": cache_dir / "signal_lab_df_train.parquet",
+        "df_val": cache_dir / "signal_lab_df_val.parquet",
+        "df_test": cache_dir / "signal_lab_df_test.parquet",
+        "candidate_trades": cache_dir / "signal_lab_candidate_trades.parquet",
+        "c_train": cache_dir / "signal_lab_c_train.parquet",
+        "c_val": cache_dir / "signal_lab_c_val.parquet",
+        "c_test": cache_dir / "signal_lab_c_test.parquet",
+        "wallet_metrics": cache_dir / "signal_lab_wallet_metrics.parquet",
+        "hold_metrics": cache_dir / "signal_lab_hold_metrics.parquet",
+        "restricted": cache_dir / "signal_lab_df_restricted.parquet",
+        "copy_wallets": cache_dir / "signal_lab_copy_wallets.pkl",
+        "conditions": cache_dir / "signal_lab_conditions.pkl",
+        "signal_sets": cache_dir / "signal_lab_signal_sets.pkl",
+        "residual_fit": cache_dir / "signal_lab_residual_fit.pkl",
+    }
+
+    if not force and all(path.exists() for path in paths.values()):
+        import pickle
+
+        df_full = pd.read_parquet(paths["df_full"])
+        df_train = pd.read_parquet(paths["df_train"])
+        df_val = pd.read_parquet(paths["df_val"])
+        df_test = pd.read_parquet(paths["df_test"])
+        candidate_trades = pd.read_parquet(paths["candidate_trades"])
+        c_train = pd.read_parquet(paths["c_train"])
+        c_val = pd.read_parquet(paths["c_val"])
+        c_test = pd.read_parquet(paths["c_test"])
+        wallet_metrics = pd.read_parquet(paths["wallet_metrics"])
+        hold_metrics = pd.read_parquet(paths["hold_metrics"])
+        restricted = pd.read_parquet(paths["restricted"])
+        with open(paths["copy_wallets"], "rb") as fh:
+            copy_wallets = pickle.load(fh)
+        with open(paths["conditions"], "rb") as fh:
+            conditions = pickle.load(fh)
+        with open(paths["signal_sets"], "rb") as fh:
+            signal_sets = pickle.load(fh)
+        with open(paths["residual_fit"], "rb") as fh:
+            residual_fit = pickle.load(fh)
+        engine = PositionSignalEngine(restricted)
+        return Stage1Workspace(
+            df_full=df_full,
+            df_train=df_train,
+            df_val=df_val,
+            df_test=df_test,
+            wallet_metrics=wallet_metrics,
+            hold_metrics=hold_metrics,
+            copy_wallets=set(copy_wallets),
+            candidate_trades=candidate_trades,
+            candidate_splits={"train": c_train, "val": c_val, "test": c_test},
+            conditions=set(conditions),
+            signal_sets={k: set(v) for k, v in signal_sets.items()},
+            engine=engine,
+            residual_fit=residual_fit,
+        )
+
+    ws = build_stage1_workspace(
+        tags=tags,
+        copy_rules=copy_rules,
+        archetype_min_trade_count=archetype_min_trade_count,
+    )
+    import pickle
+
+    ws.df_full.to_parquet(paths["df_full"])
+    ws.df_train.to_parquet(paths["df_train"])
+    ws.df_val.to_parquet(paths["df_val"])
+    ws.df_test.to_parquet(paths["df_test"])
+    ws.candidate_trades.to_parquet(paths["candidate_trades"])
+    ws.candidate_splits["train"].to_parquet(paths["c_train"])
+    ws.candidate_splits["val"].to_parquet(paths["c_val"])
+    ws.candidate_splits["test"].to_parquet(paths["c_test"])
+    ws.wallet_metrics.to_parquet(paths["wallet_metrics"])
+    ws.hold_metrics.to_parquet(paths["hold_metrics"])
+    ws.df_full[ws.df_full["condition_id"].isin(ws.conditions)][_ENGINE_COLS].to_parquet(paths["restricted"])
+    with open(paths["copy_wallets"], "wb") as fh:
+        pickle.dump(sorted(ws.copy_wallets), fh)
+    with open(paths["conditions"], "wb") as fh:
+        pickle.dump(sorted(ws.conditions), fh)
+    with open(paths["signal_sets"], "wb") as fh:
+        pickle.dump({k: sorted(v) for k, v in ws.signal_sets.items()}, fh)
+    with open(paths["residual_fit"], "wb") as fh:
+        pickle.dump(ws.residual_fit, fh)
+    return ws
 
 
 def attach_position_signal_panel(

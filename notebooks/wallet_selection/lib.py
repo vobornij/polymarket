@@ -37,8 +37,9 @@ except ImportError:
 # Defaults
 # ---------------------------------------------------------------------------
 
-DEFAULT_TRADES_DIR = Path("../../data/polygon_trades_processed")
-DEFAULT_WORKSPACE_DIR = Path("../../data/trade_signals_workspace_v2")
+_HERE = Path(__file__).resolve().parent
+DEFAULT_TRADES_DIR = (_HERE / "../../data/polygon_trades_processed").resolve()
+DEFAULT_WORKSPACE_DIR = (_HERE / "../../data/trade_signals_workspace_v2").resolve()
 # DEFAULT_TAGS = {"Politics"}
 DEFAULT_TAGS = {"Weather"}
 
