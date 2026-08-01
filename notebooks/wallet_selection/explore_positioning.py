@@ -22,7 +22,8 @@ import pandas as pd
 from lib import load_trades, split_data, compute_copyable_notional, compute_opening_metrics
 from polymarket_analysis.wallet_selection.volatility import compute_wallet_metrics
 from signal_lab.signal_lib import compute_event_ic
-from signal_lab.signal_engines import PositionSignalEngine, compute_hold_time_metrics, archetype_sets
+from signal_lab.signal_engines import PositionSignalEngine, compute_hold_time_metrics
+from signal_lab.filters import archetype_sets
 
 CACHE = '/tmp/pos_explore_cache'
 os.makedirs(CACHE, exist_ok=True)

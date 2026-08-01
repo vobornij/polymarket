@@ -1,21 +1,22 @@
 """
 Signal engines for stage1 wallet-selection.
 
-Two reusable engines built once over ``df_full``:
+The signal math lives in module-level functions (no object state needed):
 
-- :class:`SetProximityEngine` — "did wallets of a set trade this token recently?"
-  (proximity signals; the generic form of leader/quality-wallet proximity).
-- :class:`PositionSignalEngine` — "what is the aggregate open position of a
-  set on this token right now, and how far is the current price from their
-  average entry?"  Position / value-at-cost / underwater / entry-premium
-  families, computed with an exact two-pass cumsum + merge_asof over post-trade
-  checkpoints (average-cost accounting, execution-order-aware).
+- :class:`PositionSignalEngine` — precomputes the execution-order checkpoint
+  index once; ``build_set`` turns it into per-set (A, B) asof tables.
+- :func:`attach_position_signals` — attaches the position / value-at-cost /
+  underwater / entry-premium families to a candidate frame.
+- :func:`build_position_tables` — convenience: index + ``build_set`` in one call.
 
-Also provides per-wallet archetype metrics (hold times, round trips) and
-archetype set definitions (gamblers, whales, retail, scalpers, ...).
+Also provides per-wallet archetype metrics (hold times, round trips).  The
+archetype wallet-set definitions live in :mod:`signal_lab.filters`; this module
+only builds position signals from them.
 """
 
 from __future__ import annotations
+
+from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -110,6 +111,63 @@ class SetProximityEngine:
 # ---------------------------------------------------------------------------
 
 _SWAP = {'Yes': 'No', 'No': 'Yes'}
+
+
+class SignalKind(NamedTuple):
+    """A position-signal family x direction pair (e.g. ``val`` x ``opp``)."""
+
+    family: str
+    var: str
+
+    def fresh(self) -> "SignalKind":
+        """The recency-weighted counterpart: ``family`` -> ``f{family}``."""
+        return SignalKind(f"f{self.family}", self.var)
+
+
+POS_OWN = SignalKind("pos", "own")
+POS_OPP = SignalKind("pos", "opp")
+POS_TOTAL = SignalKind("pos", "total")
+VAL_OWN = SignalKind("val", "own")
+VAL_OPP = SignalKind("val", "opp")
+VAL_TOTAL = SignalKind("val", "total")
+AVGC_OWN = SignalKind("avgc", "own")
+AVGC_OPP = SignalKind("avgc", "opp")
+UWL_OWN = SignalKind("uwl", "own")
+UWL_OPP = SignalKind("uwl", "opp")
+
+ALL_POSITION_KINDS = [
+    # Aggregate quantity held by the set on the candidate's outcome,
+    # the opposite outcome, and both combined.
+    POS_OWN, POS_OPP, POS_TOTAL,
+    # Aggregate value-at-cost (USDC, average-cost accounting) per direction.
+    VAL_OWN, VAL_OPP, VAL_TOTAL,
+    # Entry premium: how far the current price is from the set's average entry
+    # (val/pos/price - 1 on the own side; 1-price on the opposite side).
+    AVGC_OWN, AVGC_OPP,
+    # Underwater amount in USDC: value-at-cost above current market value.
+    UWL_OWN, UWL_OPP,
+]
+
+# NOTE: ``uwl``/``fuwl`` are deliberately kept alongside ``pos``/``val``.
+# ``total`` and ``avgc`` are exact derivations of ``pos``/``val`` + price, but
+# keeping the explicit columns avoids recomputation and keeps every family
+# available to downstream sweeps (``position_report``).  Fresh families
+# (``fpos``/``fval``/``favgc``/``fuwl``) are NOT listed here because they require
+# a ``fresh_tau_ns`` build; they are attached per-tau by
+# ``attach_position_signal_panel(..., taus_h=...)`` instead.
+
+
+def signal_col_name(kind: SignalKind, set_name: str, tau_h: int | None = None) -> str:
+    """Column name for a position signal.
+
+    Base families: ``sig_{family}_{var}_{set}`` (e.g. ``sig_val_opp_flipper``).
+    Fresh families carry their tau in the name so multiple taus never
+    overwrite each other: ``sig_{family}_{var}_{tau}h_{set}`` (e.g.
+    ``sig_fval_opp_6h_flipper``).
+    """
+    if tau_h is not None and kind.family.startswith("f"):
+        return f"sig_{kind.family}_{kind.var}_{tau_h}h_{set_name}"
+    return f"sig_{kind.family}_{kind.var}_{set_name}"
 
 
 @njit(nogil=True)
@@ -309,82 +367,13 @@ class PositionSignalEngine:
         Returns one column per value column in A (``cum_*`` -> ``*``), equal to
         A's nearest-checkpoint cumsum minus B's (position / vac / fresh-*).
         """
-        left = cand.sort_values('dt')[['dt'] + by_cols]
-        idx = left.index
-        a = pd.merge_asof(left, A, on='dt', by=by_cols, direction='backward',
-                          allow_exact_matches=False)
-        b = pd.merge_asof(left, B, on='dt', by=by_cols, direction='backward',
-                          allow_exact_matches=False)
-        val_cols = [c for c in A.columns if c not in ('dt', *by_cols)]
-        out = {c[4:] if c.startswith('cum_') else c:
-               (a[c].fillna(0.0) - b[c].fillna(0.0)).to_numpy()
-               for c in val_cols}
-        return pd.DataFrame(out, index=left.index).sort_index()
-
-    # -- signal attachment -------------------------------------------------
-
-    def attach_position_signals(self, df_c, set_name, A, B, by_cols=None):
-        """Attach position / value-at-cost / entry-premium signal columns.
-
-        Columns (``{own,opp,total}`` = candidate outcome / opposite / sum):
-
-        - ``sig_pos_{var}_{set}``   aggregate quantity held
-        - ``sig_val_{var}_{set}``   aggregate value-at-cost (USDC)
-        - ``sig_avgc_own_{set}``    val/pos/price - 1  (entry premium, own)
-        - ``sig_avgc_opp_{set}``    val/pos/(1-price) - 1 (entry premium, opp)
-        - ``sig_uwl_own_{set}``     val_own - pos_own * price (USDC underwater)
-        - ``sig_uwl_opp_{set}``     val_opp - pos_opp * (1-price)
-
-        Every family is evaluated on the candidate's OWN outcome and on the
-        OPPOSITE outcome (``_opp``) — both directions are always attached and
-        tested downstream.
-
-        If A/B carry ``cum_fpos``/``cum_fvac`` (fresh_tau_ns build), also
-        attaches the recent-entry family ``sig_fpos_*`` / ``sig_fval_*`` /
-        ``sig_favgc_*`` / ``sig_fuwl_*`` (recency-weighted, so a recently
-        entered underwater position counts more than a long-held one).
-        """
-        by_cols = by_cols or ['condition_id', 'outcome']
-        own = self.aggregate_value(df_c, A, B, by_cols)
-        opp = self.aggregate_value(
-            df_c.assign(outcome=df_c['outcome'].map(_SWAP)), A, B, by_cols)
-        p_own, p_opp = own['pos'].to_numpy(), opp['pos'].to_numpy()
-        v_own, v_opp = own['vac'].to_numpy(), opp['vac'].to_numpy()
-        p_cand = df_c['price'].to_numpy()
-        df_c[f'sig_pos_own_{set_name}'] = p_own
-        df_c[f'sig_pos_opp_{set_name}'] = p_opp
-        df_c[f'sig_pos_total_{set_name}'] = p_own + p_opp
-        df_c[f'sig_val_own_{set_name}'] = v_own
-        df_c[f'sig_val_opp_{set_name}'] = v_opp
-        df_c[f'sig_val_total_{set_name}'] = v_own + v_opp
-        with np.errstate(divide='ignore', invalid='ignore'):
-            df_c[f'sig_avgc_own_{set_name}'] = np.where(
-                p_own > 0, v_own / p_own / p_cand - 1.0, 0.0)
-            df_c[f'sig_avgc_opp_{set_name}'] = np.where(
-                p_opp > 0, v_opp / p_opp / (1.0 - p_cand) - 1.0, 0.0)
-        df_c[f'sig_uwl_own_{set_name}'] = v_own - p_own * p_cand
-        df_c[f'sig_uwl_opp_{set_name}'] = v_opp - p_opp * (1.0 - p_cand)
-
-        if 'fpos' in own.columns:
-            fp_own, fp_opp = own['fpos'].to_numpy(), opp['fpos'].to_numpy()
-            fv_own, fv_opp = own['fvac'].to_numpy(), opp['fvac'].to_numpy()
-            df_c[f'sig_fpos_own_{set_name}'] = fp_own
-            df_c[f'sig_fpos_opp_{set_name}'] = fp_opp
-            df_c[f'sig_fval_own_{set_name}'] = fv_own
-            df_c[f'sig_fval_opp_{set_name}'] = fv_opp
-            with np.errstate(divide='ignore', invalid='ignore'):
-                df_c[f'sig_favgc_own_{set_name}'] = np.where(
-                    fp_own > 0, fv_own / fp_own / p_cand - 1.0, 0.0)
-                df_c[f'sig_favgc_opp_{set_name}'] = np.where(
-                    fp_opp > 0, fv_opp / fp_opp / (1.0 - p_cand) - 1.0, 0.0)
-            df_c[f'sig_fuwl_own_{set_name}'] = fv_own - fp_own * p_cand
-            df_c[f'sig_fuwl_opp_{set_name}'] = fv_opp - fp_opp * (1.0 - p_cand)
+        return aggregate_value(cand, A, B, by_cols)
 
     def build_set(self, wallets, conditions=None, fresh_tau_ns=None):
         """Fast per-set aggregation: mask precomputed rec, cumsum per key.
 
         Returns (A, B) asof tables keyed by (condition_id, outcome) with
-        cum_pos / cum_vac columns (compatible with :meth:`aggregate_value`).
+        cum_pos / cum_vac columns (compatible with :func:`aggregate_value`).
         B excludes each (wallet, key) final checkpoint, so A - B = aggregate
         open position at the last checkpoint <= t.
 
@@ -438,6 +427,103 @@ class PositionSignalEngine:
 
 
 # ---------------------------------------------------------------------------
+# Shared signal functions (stateless; live here as the common library)
+# ---------------------------------------------------------------------------
+
+
+def build_position_tables(trades: pd.DataFrame, wallets, conditions=None,
+                          fresh_tau_ns=None):
+    """Convenience: build the checkpoint index over ``trades`` and return the
+    (A, B) asof tables for ``wallets`` (see :meth:`PositionSignalEngine.build_set`)."""
+    return PositionSignalEngine(trades).build_set(
+        wallets, conditions=conditions, fresh_tau_ns=fresh_tau_ns)
+
+
+def aggregate_value(cand: pd.DataFrame, A: pd.DataFrame, B: pd.DataFrame,
+                    by_cols: list[str]) -> pd.DataFrame:
+    """Exact aggregate of the set on cand's key at cand.dt.
+
+    Returns one column per value column in A (``cum_*`` -> ``*``), equal to
+    A's nearest-checkpoint cumsum minus B's (position / vac / fresh-*).
+    """
+    left = cand.sort_values('dt')[['dt'] + by_cols]
+    idx = left.index
+    a = pd.merge_asof(left, A, on='dt', by=by_cols, direction='backward',
+                      allow_exact_matches=False)
+    b = pd.merge_asof(left, B, on='dt', by=by_cols, direction='backward',
+                      allow_exact_matches=False)
+    val_cols = [c for c in A.columns if c not in ('dt', *by_cols)]
+    out = {c[4:] if c.startswith('cum_') else c:
+           (a[c].fillna(0.0) - b[c].fillna(0.0)).to_numpy()
+           for c in val_cols}
+    return pd.DataFrame(out, index=left.index).sort_index()
+
+
+def attach_position_signals(df_c: pd.DataFrame, set_name: str, A: pd.DataFrame,
+                            B: pd.DataFrame, by_cols=None,
+                            fresh_tau_h: int | None = None):
+    """Attach position / value-at-cost / entry-premium signal columns.
+
+    Columns (``{own,opp,total}`` = candidate outcome / opposite / sum):
+
+    - ``sig_pos_{var}_{set}``   aggregate quantity held
+    - ``sig_val_{var}_{set}``   aggregate value-at-cost (USDC)
+    - ``sig_avgc_own_{set}``    val/pos/price - 1  (entry premium, own)
+    - ``sig_avgc_opp_{set}``    val/pos/(1-price) - 1 (entry premium, opp)
+    - ``sig_uwl_own_{set}``     val_own - pos_own * price (USDC underwater)
+    - ``sig_uwl_opp_{set}``     val_opp - pos_opp * (1-price)
+
+    Every family is evaluated on the candidate's OWN outcome and on the
+    OPPOSITE outcome (``_opp``) — both directions are always attached and
+    tested downstream.
+
+    If A/B carry ``cum_fpos``/``cum_fvac`` (fresh_tau_ns build), also
+    attaches the recent-entry family ``sig_fpos_*`` / ``sig_fval_*`` /
+    ``sig_favgc_*`` / ``sig_fuwl_*`` (recency-weighted, so a recently
+    entered underwater position counts more than a long-held one).  When
+    ``fresh_tau_h`` is given the fresh columns are named with the tau baked
+    in (``sig_fval_opp_{tau}h_{set}``, see :func:`signal_col_name`).
+    """
+    by_cols = by_cols or ['condition_id', 'outcome']
+    own = aggregate_value(df_c, A, B, by_cols)
+    opp = aggregate_value(
+        df_c.assign(outcome=df_c['outcome'].map(_SWAP)), A, B, by_cols)
+    p_own, p_opp = own['pos'].to_numpy(), opp['pos'].to_numpy()
+    v_own, v_opp = own['vac'].to_numpy(), opp['vac'].to_numpy()
+    p_cand = df_c['price'].to_numpy()
+    df_c[f'sig_pos_own_{set_name}'] = p_own
+    df_c[f'sig_pos_opp_{set_name}'] = p_opp
+    df_c[f'sig_pos_total_{set_name}'] = p_own + p_opp
+    df_c[f'sig_val_own_{set_name}'] = v_own
+    df_c[f'sig_val_opp_{set_name}'] = v_opp
+    df_c[f'sig_val_total_{set_name}'] = v_own + v_opp
+    with np.errstate(divide='ignore', invalid='ignore'):
+        df_c[f'sig_avgc_own_{set_name}'] = np.where(
+            p_own > 0, v_own / p_own / p_cand - 1.0, 0.0)
+        df_c[f'sig_avgc_opp_{set_name}'] = np.where(
+            p_opp > 0, v_opp / p_opp / (1.0 - p_cand) - 1.0, 0.0)
+    df_c[f'sig_uwl_own_{set_name}'] = v_own - p_own * p_cand
+    df_c[f'sig_uwl_opp_{set_name}'] = v_opp - p_opp * (1.0 - p_cand)
+
+    if 'fpos' in own.columns:
+        fp_own, fp_opp = own['fpos'].to_numpy(), opp['fpos'].to_numpy()
+        fv_own, fv_opp = own['fvac'].to_numpy(), opp['fvac'].to_numpy()
+        df_c[signal_col_name(POS_OWN.fresh(), set_name, fresh_tau_h)] = fp_own
+        df_c[signal_col_name(POS_OPP.fresh(), set_name, fresh_tau_h)] = fp_opp
+        df_c[signal_col_name(VAL_OWN.fresh(), set_name, fresh_tau_h)] = fv_own
+        df_c[signal_col_name(VAL_OPP.fresh(), set_name, fresh_tau_h)] = fv_opp
+        with np.errstate(divide='ignore', invalid='ignore'):
+            df_c[signal_col_name(AVGC_OWN.fresh(), set_name, fresh_tau_h)] = np.where(
+                fp_own > 0, fv_own / fp_own / p_cand - 1.0, 0.0)
+            df_c[signal_col_name(AVGC_OPP.fresh(), set_name, fresh_tau_h)] = np.where(
+                fp_opp > 0, fv_opp / fp_opp / (1.0 - p_cand) - 1.0, 0.0)
+        df_c[signal_col_name(UWL_OWN.fresh(), set_name, fresh_tau_h)] = (
+            fv_own - fp_own * p_cand)
+        df_c[signal_col_name(UWL_OPP.fresh(), set_name, fresh_tau_h)] = (
+            fv_opp - fp_opp * (1.0 - p_cand))
+
+
+# ---------------------------------------------------------------------------
 # Per-wallet archetype metrics (train-time, cheap)
 # ---------------------------------------------------------------------------
 
@@ -486,125 +572,20 @@ def compute_hold_time_metrics(df_train: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Archetype set definitions (from wallet_vol + optional hold-time metrics)
+# Position-signal kinds
 # ---------------------------------------------------------------------------
 
-
-def quantile_thresholds(series: pd.Series, qs=(0.25, 0.75, 0.8)) -> dict:
-    s = series.dropna()
-    return {f'p{int(q * 100)}': float(s.quantile(q)) for q in qs}
-
-
-def archetype_sets(wallet_vol: pd.DataFrame, hold=None,
-                   min_trade_count: int = 100) -> dict[str, pd.DataFrame]:
-    """Archetype wallet sets from train-period wallet_vol (and optional hold
-    time metrics). Returns dict name -> DataFrame of selected wallets.
-
-    Definitions are data-driven (quantiles over the active population with
-    ``trade_count >= min_trade_count``).
-    """
-    w = wallet_vol.copy()
-    active = w[w['trade_count'] >= min_trade_count].copy()
-    if active.empty:
-        return {}
-    active['avg_trade_usdc'] = active['total_notional'] / active['trade_count'].clip(lower=1)
-
-    t_total = quantile_thresholds(active['total_notional'], (0.6, 0.75, 0.8))
-    t_avg = quantile_thresholds(active['avg_trade_usdc'], (0.6, 0.75, 0.8))
-    t_vol = quantile_thresholds(active['pnl_volatility'], (0.6, 0.75, 0.8))
-    t_topmkt = quantile_thresholds(active['top_market_pnl_pct'], (0.6, 0.75, 0.8))
-    t_posbuck = quantile_thresholds(active['positive_bucket_share'], (0.2, 0.4, 0.5))
-
-    masks: dict[str, pd.Series] = {
-        # Big total capital AND big average trade size.
-        'whale': (
-            (active['total_notional'] >= t_total['p75'])
-            & (active['avg_trade_usdc'] >= t_avg['p75'])
-        ),
-        # Small average trade size (retail-sized), still active.
-        'retail': (
-            (active['avg_trade_usdc'] <= active['avg_trade_usdc'].quantile(0.25))
-            & (active['total_notional'] <= active['total_notional'].quantile(0.6))
-        ),
-        # Lottery-ticket gambler: volatile, concentrated in one market, mostly
-        # losing buckets but a single big winner carries total PnL.
-        'gambler': (
-            (active['pnl_volatility'] >= t_vol['p75'])
-            & (active['top_market_pnl_pct'] >= t_topmkt['p75'])
-            & (active['positive_bucket_share'] <= t_posbuck['p50'])
-            & (active['num_markets'] <= active['num_markets'].quantile(0.6))
-        ),
-        # Net-negative on sells yet profitable overall (the original overseller).
-        'overseller': (
-            (active['sell_pnl'] < 0) & (active['total_pnl'] > 0)
-        ),
-        'overseller_deep': (
-            (active['sell_pnl'] < 0) & (active['total_pnl'] > 0)
-            & (active['sell_roi'] < -0.1)
-        ),
-        'overseller_thin': (
-            (active['sell_pnl'] < 0) & (active['total_pnl'] > 0)
-            & (active['buy_pnl'] < 50)
-        ),
-        # Consistent winners (low drawdown, diversified, positive buy edge).
-        'consistent': (
-            (active['buy_roi'] >= 0.05)
-            & (active['max_drawdown_to_pnl'].fillna(1.0) <= 0.3)
-            & (active['num_markets'] >= 20)
-            & (active['copyable_roi'].fillna(0.0) >= 0.05)
-        ),
-        # Deeply underwater on the way in / out.
-        'max_dd': (
-            active['max_drawdown_to_pnl'].fillna(1.0) >= 0.6
-        ),
-        # Heavy both-side traders (large buy AND sell notional).
-        'both_sides': (
-            (active['buy_notional'] >= active['buy_notional'].quantile(0.6))
-            & (active['sell_notional'] >= active['sell_notional'].quantile(0.6))
-        ),
-    }
-
-    if hold is not None:
-        active_h = active.copy()
-        if 'median_hold_min' not in active_h.columns:
-            hold_by_wallet = hold.set_index('wallet')
-            for c in ['median_hold_min', 'median_flip_min', 'p25_hold_min',
-                      'n_round_trips', 'round_trip_rate']:
-                if c in hold_by_wallet.columns:
-                    active_h[c] = active_h['wallet'].map(hold_by_wallet[c])
-        active_h['median_hold_min'] = active_h['median_hold_min'].replace(np.inf, np.nan)
-        active_h['median_flip_min'] = active_h['median_flip_min'].replace(np.inf, np.nan)
-        h50 = active_h['median_hold_min'].quantile(0.5)
-        masks['scalper'] = (
-            (active_h['n_round_trips'] >= 20)
-            & (active_h['median_hold_min'] <= active_h['median_hold_min'].quantile(0.25))
-            & (active_h['buy_roi'] > 0) & (active_h['sell_roi'] > 0)
-        )
-        masks['flipper'] = (
-            (active_h['median_flip_min'] <= active_h['median_flip_min'].quantile(0.25))
-            & (active_h['n_round_trips'] >= 20)
-        )
-
-    out = {}
-    for name, m in masks.items():
-        sel = active[m].copy()
-        if len(sel) >= 5:
-            out[name] = sel
-    return out
+# ``SignalKind`` constants and ``ALL_POSITION_KINDS`` are defined at the top of
+# this module (next to :func:`signal_col_name`).  Fresh families (``fpos`` /
+# ``fval`` / ``favgc`` / ``fuwl``) are NOT listed there because they require a
+# ``fresh_tau_ns`` build; they are attached per-tau by
+# ``attach_position_signal_panel(..., taus_h=...)`` instead.
 
 
-ALL_POSITION_KINDS = [
-    ('pos', 'own'), ('pos', 'opp'), ('pos', 'total'),
-    ('val', 'own'), ('val', 'opp'), ('val', 'total'),
-    ('avgc', 'own'), ('avgc', 'opp'),
-    ('uwl', 'own'), ('uwl', 'opp'),
-]
-
-
-def position_report(engine, c_train, c_val, c_test, set_wallets, set_name,
+def position_report(trades, c_train, c_val, c_test, set_wallets, set_name,
                     roi_col='copyable_roi', kinds=None, presence_min=0.005,
                     alpha=0.05, n_boot=500, seed=42, min_ic=None,
-                    conditions=None):
+                    conditions=None, build_fn=None, attach_fn=None):
     """Attach all position signals for one set and return per-signal IC rows.
 
     ICs are computed against ``roi_col`` (pass a price-residualized ROI to
@@ -612,16 +593,20 @@ def position_report(engine, c_train, c_val, c_test, set_wallets, set_name,
     AND val, bootstrap CI of the pooled train+val IC excluding 0 (alpha), an
     optional |IC| floor ``min_ic``, and presence >= ``presence_min``.
     ``kinds`` defaults to the non-redundant pos/val x own/opp variants.
+    ``build_fn``/``attach_fn`` default to the shared library functions and can
+    be injected for testing.
     """
     if kinds is None:
-        kinds = [('pos', 'own'), ('pos', 'opp'), ('val', 'own'), ('val', 'opp')]
-    A, B = engine.build_set(set_wallets, conditions)
+        kinds = [POS_OWN, POS_OPP, VAL_OWN, VAL_OPP]
+    build_fn = build_fn or build_position_tables
+    attach_fn = attach_fn or attach_position_signals
+    A, B = build_fn(trades, set_wallets, conditions)
     for df_c in (c_train, c_val, c_test):
-        engine.attach_position_signals(df_c, set_name, A, B)
+        attach_fn(df_c, set_name, A, B)
 
     rows, selected = [], []
-    for kind, var in kinds:
-        col = f'sig_{kind}_{var}_{set_name}'
+    for kind in kinds:
+        col = signal_col_name(kind, set_name)
         pres = float((c_train[col] > 0).mean())
         ics = {lbl: compute_event_ic(df_c[col].fillna(0.0), df_c[roi_col])
                for lbl, df_c in [('train', c_train), ('val', c_val), ('test', c_test)]}
@@ -630,7 +615,7 @@ def position_report(engine, c_train, c_val, c_test, set_wallets, set_name,
         m, lo, hi = bootstrap_ic(pooled[col].fillna(0.0), pooled[roi_col],
                                  n_iter=n_boot, alpha=alpha, seed=seed)
         significant = np.isfinite(lo) and np.isfinite(hi) and (lo > 0 or hi < 0)
-        rows.append({'signal': col, 'kind': f'{kind}_{var}',
+        rows.append({'signal': col, 'kind': f'{kind.family}_{kind.var}',
                      'presence_train': pres,
                      'IC_train': ics['train'], 'IC_val': ics['val'],
                      'IC_test': ics['test'],

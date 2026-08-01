@@ -2,7 +2,7 @@
 
 This is intentionally small and opinionated. It shows the full path:
 
-1. load the stage-1 workspace,
+1. load the stage-1 data,
 2. attach one known sample signal,
 3. convert it into a copy-trade-friendly direction,
 4. evaluate it on the copy universe,
@@ -24,22 +24,28 @@ if str(_NOTEBOOK_DIR) not in sys.path:
     sys.path.insert(0, str(_NOTEBOOK_DIR))
 
 try:
+    from .filters import COPY_DEFAULT, FLIPPER
+    from .signal_engines import VAL_OPP
     from .stage1 import (
         attach_position_signal_panel,
         build_composite_scores,
-        build_stage1_workspace,
+        candidate_splits_for,
         evaluate_signal_panel,
         evaluate_threshold_grid,
-        summarize_workspace,
+        load_stage1_data,
+        restrict_trades,
     )
 except ImportError:
+    from filters import COPY_DEFAULT, FLIPPER  # type: ignore
+    from signal_engines import VAL_OPP  # type: ignore
     from stage1 import (  # type: ignore
         attach_position_signal_panel,
         build_composite_scores,
-        build_stage1_workspace,
+        candidate_splits_for,
         evaluate_signal_panel,
         evaluate_threshold_grid,
-        summarize_workspace,
+        load_stage1_data,
+        restrict_trades,
     )
 
 
@@ -49,14 +55,29 @@ SAMPLE_COPY_SIGNAL = "sig_copy_anti_crowding_flipper"
 
 def run_example_solution(
     cost_bps: float = 0.0,
-    workspace=None,
+    data=None,
 ) -> dict[str, object]:
     """Run one complete lightweight signal-lab example."""
-    ws = build_stage1_workspace() if workspace is None else workspace
+    if data is None:
+        df_full, df_train, df_val, df_test, wallet_metrics, hold_metrics = (
+            load_stage1_data()
+        )
+    else:
+        df_full, df_train, df_val, df_test, wallet_metrics, hold_metrics = data
+
+    copy_wallets = set(COPY_DEFAULT(wallet_metrics, hold_metrics))
+    splits = candidate_splits_for(df_full, copy_wallets)
+    conditions: set[str] = set()
+    for frame in splits.values():
+        conditions.update(frame["condition_id"].unique())
+    trades = restrict_trades(df_full, conditions)
     splits, cols = attach_position_signal_panel(
-        ws,
-        signal_sets={"flipper": ws.signal_sets["flipper"]},
-        kinds=[("val", "opp")],
+        trades,
+        splits,
+        [FLIPPER],
+        kinds=[VAL_OPP],
+        wallet_metrics=wallet_metrics,
+        hold_metrics=hold_metrics,
     )
 
     if SAMPLE_BASE_SIGNAL not in cols:
@@ -70,7 +91,18 @@ def run_example_solution(
     report, selected = evaluate_signal_panel(splits, [SAMPLE_COPY_SIGNAL])
 
     result: dict[str, object] = {
-        "workspace_summary": summarize_workspace(ws),
+        "workspace_summary": pd.DataFrame(
+            [
+                {
+                    "copy_wallets": len(copy_wallets),
+                    "candidate_trades": sum(len(f) for f in splits.values()),
+                    "train_candidates": len(splits["train"]),
+                    "val_candidates": len(splits["val"]),
+                    "test_candidates": len(splits["test"]),
+                    "candidate_conditions": len(conditions),
+                }
+            ]
+        ),
         "signal_report": report,
         "selected": selected,
         "splits": splits,

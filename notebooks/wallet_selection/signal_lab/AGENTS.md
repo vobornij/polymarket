@@ -15,11 +15,14 @@ Not the goal:
 
 ## Main Files
 
-- `stage1.py`: build the copy-universe workspace and evaluate signals
-- `signal_engines.py`: construct position-based signals
+- `stage1.py`: functional pipeline — load data, build the candidate universe, run strategies, evaluate signals
+- `filters.py`: typed wallet filters (`WalletFilter` objects, `WALLET_FILTERS` registry); strategies reference filter objects directly
+- `signal_engines.py`: position-signal math as module functions; `SignalKind` constants and `signal_col_name` name columns
 - `signal_lib.py`: IC, residualization, bootstrap, combination, threshold checks
 - `example_solution.py`: minimal working example
 - `quickstart_signal_lab.ipynb`: notebook entrypoint for manual exploration
+- `explore_new_ideas.py`: sequential CLI script for testing signal strategies using `SignalStrategy` protocol
+- `strategies/`: Folder containing modular `SignalStrategy` classes for different hypotheses.
 - `ideas/*.md`: strategy ideas to evaluate
 
 Useful context:
@@ -27,17 +30,32 @@ Useful context:
 - `../position_signals.md`
 - `../stage1_experimental.ipynb`
 
+## Strategy Protocol
+
+The `signal_lab` supports modular exploration of signal combinations. A strategy is **declarative**: it declares what it wants (copy-wallet filter, wallet-set filters, position kinds, fresh-signal taus) and computes its own signals in `calculate_signals`.
+
+Define a class that inherits from `signal_lab.strategies.base.DeclarativeStrategy` (or implements the `SignalStrategy` protocol) and declare typed objects — **no magic strings**:
+
+- `copy_mask`: a `WalletFilter` object (default `filters.COPY_DEFAULT`). `run_strategy` selects these wallets' BUY trades as the candidate universe.
+- `signal_sets`: list of `WalletFilter` objects the signals are computed against (e.g. `filters.FLIPPER`, `filters.BOTH_SIDES`).
+- `kinds`: list of `SignalKind` constants (e.g. `signal_engines.VAL_OPP`, `signal_engines.UWL_OPP`).
+- `fresh_kinds`: optional list of `SignalKind` attached per tau (defaults to `kinds`); each becomes its `.fresh()` family.
+- `taus_h`: fresh-signal decay taus in hours (empty list disables fresh signals).
+
+Fresh column names bake the tau in: `signal_col_name(VAL_OPP.fresh(), 'flipper', tau_h=6)` -> `sig_fval_opp_6h_flipper`. See `strategies/fresh_opposite_crowding.py` and `strategies/gambler_capitulation.py` for examples.
+
 ## Workflow
 
 When asked to evaluate `ideas/X.md`:
 
 1. Read the idea and restate the hypothesis.
 2. Identify candidate trades, signals to test, and obvious confounders.
-3. Start from `example_solution.py` or `quickstart_signal_lab.ipynb`.
-4. Build the workspace once.
-5. Run the narrowest plausible test first.
-6. Use train/validation to decide whether to continue.
-7. Only inspect test after something looks promising.
+3. Start from `example_solution.py`, `quickstart_signal_lab.ipynb`, or implement a new `DeclarativeStrategy` in `strategies/`.
+4. Load data once with `load_stage1_data()`.
+5. Run the strategy end-to-end with `run_strategy(df_full, wallet_metrics, hold_metrics, strategy)` (rebuilds the candidate universe from the strategy's `copy_mask`, re-splits chronologically, re-residualizes ROI, attaches the declared signal panel).
+6. Run the narrowest plausible test first.
+7. Use train/validation to decide whether to continue.
+8. Only inspect test after something looks promising.
 
 ## Guardrails
 
@@ -57,16 +75,16 @@ When asked to evaluate `ideas/X.md`:
 ## Minimal Code Pattern
 
 ```python
-from signal_lab.stage1 import build_stage1_workspace, attach_position_signal_panel, evaluate_signal_panel
+from signal_lab.stage1 import load_stage1_data, run_strategy, evaluate_signal_panel
+from signal_lab.strategies import FreshOppositeCrowdingFilter
 
-ws = build_stage1_workspace()
-splits, cols = attach_position_signal_panel(
-    ws,
-    signal_sets={"flipper": ws.signal_sets["flipper"]},
-    kinds=[("val", "opp")],
-)
-report, selected = evaluate_signal_panel(splits, cols)
+df_full, df_train, df_val, df_test, wallet_metrics, hold_metrics = load_stage1_data()
+strategy = FreshOppositeCrowdingFilter()
+splits, cols = run_strategy(df_full, wallet_metrics, hold_metrics, strategy)  # cols include e.g. "sig_fval_opp_6h_flipper"
+report, selected = evaluate_signal_panel(splits, cols, roi_col="roi_res")
 ```
+
+For a single known signal without a strategy, `attach_position_signal_panel(trades, splits, [FLIPPER], kinds=[VAL_OPP], wallet_metrics=wallet_metrics, hold_metrics=hold_metrics)` still works.
 
 ## Prompt Template
 

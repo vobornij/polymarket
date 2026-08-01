@@ -1,23 +1,26 @@
-"""Reusable workspace for rapid stage-1 copy-trade signal exploration.
+"""Functional stage-1 copy-trade signal exploration.
 
-The goal is to make the current ``stage1_experimental`` process notebook-light:
+There is no workspace object.  Plain functions take explicit data:
 
-1. build a candidate-trade universe from public trades,
-2. attach one or more signal families,
-3. evaluate signals on train/val with price-residualized ROI,
-4. combine, threshold, and report on a held-out test split.
+- :func:`load_stage1_data` loads trades and computes the train-period wallet /
+  hold metrics (returns a plain tuple).
+- :func:`candidate_splits_for` builds the BUY-trade candidate universe for a
+  set of wallets, split chronologically with train-fitted ``roi_res``.
+- :func:`restrict_trades` cuts ``df_full`` down to the candidate conditions
+  (the input for the position-checkpoint index).
+- :func:`attach_position_signal_panel` attaches a strategy's declared signal
+  families to candidate splits.
+- :func:`run_strategy` runs a declarative strategy end-to-end.
 
-This module keeps the existing stage1 methodology but makes the slow parts
-reusable, and fixes split-level signal normalization leakage by fitting rank
-transforms on train only.
+This module keeps the existing stage1 methodology but fixes split-level signal
+normalization leakage by fitting rank transforms on train only.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 import sys
-from typing import Iterable
+from typing import Iterable, Protocol
 
 import numpy as np
 import pandas as pd
@@ -36,7 +39,18 @@ from lib import (
 from polymarket_analysis.wallet_selection.volatility import compute_wallet_metrics
 
 try:
-    from .signal_engines import PositionSignalEngine, archetype_sets, compute_hold_time_metrics
+    from .filters import WalletFilter
+    from .signal_engines import (
+        POS_OPP,
+        POS_OWN,
+        VAL_OPP,
+        VAL_OWN,
+        PositionSignalEngine,
+        SignalKind,
+        attach_position_signals,
+        compute_hold_time_metrics,
+        signal_col_name,
+    )
     from .signal_lib import (
         apply_composite_score,
         apply_rank_transformer,
@@ -49,7 +63,18 @@ try:
         residualized_roi,
     )
 except ImportError:
-    from signal_engines import PositionSignalEngine, archetype_sets, compute_hold_time_metrics  # type: ignore
+    from filters import WalletFilter  # type: ignore
+    from signal_engines import (  # type: ignore
+        POS_OPP,
+        POS_OWN,
+        VAL_OPP,
+        VAL_OWN,
+        PositionSignalEngine,
+        SignalKind,
+        attach_position_signals,
+        compute_hold_time_metrics,
+        signal_col_name,
+    )
     from signal_lib import (  # type: ignore
         apply_composite_score,
         apply_rank_transformer,
@@ -63,42 +88,7 @@ except ImportError:
     )
 
 
-DEFAULT_COPY_RULES = {
-    "min_buy_roi": 0.02,
-    "min_buckets": 20,
-    "min_markets": 15,
-    "min_trade_count": 100,
-    "max_drawdown_to_pnl": 0.6,
-    "min_copyable_roi": 0.05,
-}
-
-DEFAULT_SIGNAL_KINDS = [
-    ("pos", "own"),
-    ("pos", "opp"),
-    ("val", "own"),
-    ("val", "opp"),
-]
-
-DEFAULT_FRESH_SIGNAL_KINDS = [
-    ("pos", "own"),
-    ("pos", "opp"),
-    ("pos", "total"),
-    ("val", "own"),
-    ("val", "opp"),
-    ("val", "total"),
-    ("avgc", "own"),
-    ("avgc", "opp"),
-    ("uwl", "own"),
-    ("uwl", "opp"),
-    ("fpos", "own"),
-    ("fpos", "opp"),
-    ("fval", "own"),
-    ("fval", "opp"),
-    ("favgc", "own"),
-    ("favgc", "opp"),
-    ("fuwl", "own"),
-    ("fuwl", "opp"),
-]
+DEFAULT_SIGNAL_KINDS = [POS_OWN, POS_OPP, VAL_OWN, VAL_OPP]
 
 _ENGINE_COLS = [
     "wallet",
@@ -111,32 +101,27 @@ _ENGINE_COLS = [
     "price",
 ]
 
-_CACHE_DIR = Path("/tmp/pos_explore_cache")
-_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+class StrategyProtocol(Protocol):
+    """Minimal structural interface :func:`run_strategy` needs from a strategy.
 
-@dataclass
-class Stage1Workspace:
-    df_full: pd.DataFrame
-    df_train: pd.DataFrame
-    df_val: pd.DataFrame
-    df_test: pd.DataFrame
-    wallet_metrics: pd.DataFrame
-    hold_metrics: pd.DataFrame
-    copy_wallets: set[str]
-    candidate_trades: pd.DataFrame
-    candidate_splits: dict[str, pd.DataFrame]
-    conditions: set[str]
-    signal_sets: dict[str, set[str]]
-    engine: PositionSignalEngine
-    residual_fit: dict[str, float]
-    set_tables_cache: dict[tuple[str, int | None], tuple[pd.DataFrame, pd.DataFrame]]
+    The canonical protocol lives in ``signal_lab.strategies.base``; this local
+    protocol exists so :mod:`signal_lab.stage1` does not import the strategies
+    package (which imports back into this module).
+    """
 
-    def clone_candidate_splits(self) -> dict[str, pd.DataFrame]:
-        return {
-            split: frame.copy(deep=True)
-            for split, frame in self.candidate_splits.items()
-        }
+    copy_mask: WalletFilter
+
+    def calculate_signals(
+        self,
+        splits: dict[str, pd.DataFrame],
+        *,
+        trades: pd.DataFrame,
+        wallet_metrics: pd.DataFrame,
+        hold_metrics: pd.DataFrame,
+    ) -> dict[str, pd.DataFrame]: ...
+
+    def get_signal_columns(self) -> list[str]: ...
 
 
 def _reference_frame(
@@ -175,224 +160,121 @@ def _attach_copy_wallet_metrics(df_train: pd.DataFrame) -> pd.DataFrame:
     return wallet_metrics
 
 
-def select_copy_wallets(
-    wallet_metrics: pd.DataFrame,
-    copy_rules: dict[str, float] | None = None,
-) -> set[str]:
-    copy_rules = {**DEFAULT_COPY_RULES, **(copy_rules or {})}
-    mask = (
-        (wallet_metrics["buy_roi"] >= copy_rules["min_buy_roi"])
-        & (wallet_metrics["num_buckets"] >= copy_rules["min_buckets"])
-        & (wallet_metrics["num_markets"] >= copy_rules["min_markets"])
-        & (wallet_metrics["trade_count"] >= copy_rules["min_trade_count"])
-        & (
-            wallet_metrics["max_drawdown_to_pnl"].fillna(1.0)
-            <= copy_rules["max_drawdown_to_pnl"]
-        )
-        & (wallet_metrics["copyable_roi"].fillna(0.0) >= copy_rules["min_copyable_roi"])
-    )
-    return set(wallet_metrics.loc[mask, "wallet"])
-
-
-def build_stage1_workspace(
+def load_stage1_data(
     *,
     tags: set[str] | None = DEFAULT_TAGS,
-    copy_rules: dict[str, float] | None = None,
-    archetype_min_trade_count: int = 100,
-) -> Stage1Workspace:
-    """Build the reusable stage-1 research workspace from raw public trades."""
-    df_full = compute_copyable_notional(load_trades(tags=tags))
-    df_train, df_val, df_test = split_data(df_full, method="chronological")
+    max_shards: int | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Load trades and compute the train-period metrics.
 
+    Returns a plain tuple
+    ``(df_full, df_train, df_val, df_test, wallet_metrics, hold_metrics)``.
+    """
+    df_full = compute_copyable_notional(load_trades(tags=tags, max_shards=max_shards))
+    df_train, df_val, df_test = split_data(df_full, method="chronological")
     wallet_metrics = _attach_copy_wallet_metrics(df_train)
     hold_metrics = compute_hold_time_metrics(df_train)
-    copy_wallets = select_copy_wallets(wallet_metrics, copy_rules)
+    return df_full, df_train, df_val, df_test, wallet_metrics, hold_metrics
 
+
+def candidate_splits_for(
+    df_full: pd.DataFrame,
+    wallets: Iterable[str],
+) -> dict[str, pd.DataFrame]:
+    """BUY trades of ``wallets`` split chronologically with train-fitted ``roi_res``."""
     candidate_trades = df_full[
-        df_full["wallet"].isin(copy_wallets) & (df_full["side"] == "BUY")
+        df_full["wallet"].isin(wallets) & (df_full["side"] == "BUY")
     ].copy()
     c_train, c_val, c_test = split_data(candidate_trades, method="chronological")
-    candidate_splits = {"train": c_train, "val": c_val, "test": c_test}
-
     residual_fit = fit_roi_residualizer(c_train["copyable_roi"], c_train["price"])
-    for frame in candidate_splits.values():
+    splits: dict[str, pd.DataFrame] = {}
+    for label, frame in (("train", c_train), ("val", c_val), ("test", c_test)):
         frame["roi_res"] = residualized_roi(
-            frame["copyable_roi"],
-            frame["price"],
-            residual_fit,
+            frame["copyable_roi"], frame["price"], residual_fit
         )
-
-    signal_sets = {
-        name: set(sel["wallet"])
-        for name, sel in archetype_sets(
-            wallet_metrics,
-            hold_metrics,
-            min_trade_count=archetype_min_trade_count,
-        ).items()
-    }
-    conditions = set(candidate_trades["condition_id"].unique())
-    restricted = df_full[df_full["condition_id"].isin(conditions)][_ENGINE_COLS].copy()
-    engine = PositionSignalEngine(restricted)
-
-    return Stage1Workspace(
-        df_full=df_full,
-        df_train=df_train,
-        df_val=df_val,
-        df_test=df_test,
-        wallet_metrics=wallet_metrics,
-        hold_metrics=hold_metrics,
-        copy_wallets=copy_wallets,
-        candidate_trades=candidate_trades,
-        candidate_splits=candidate_splits,
-        conditions=conditions,
-        signal_sets=signal_sets,
-        engine=engine,
-        residual_fit=residual_fit,
-        set_tables_cache={},
-    )
+        splits[label] = frame
+    return splits
 
 
-def build_stage1_workspace_cached(
-    *,
-    tags: set[str] | None = DEFAULT_TAGS,
-    copy_rules: dict[str, float] | None = None,
-    archetype_min_trade_count: int = 100,
-    cache_dir: Path = _CACHE_DIR,
-    force: bool = False,
-) -> Stage1Workspace:
-    """Build the stage-1 workspace with simple parquet/pickle caching.
-
-    The first run is still expensive because it builds the full training
-    workspace. Later runs reuse the persisted frames and rebuild only the
-    lightweight engine object.
-    """
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    paths = {
-        "df_full": cache_dir / "signal_lab_df_full.parquet",
-        "df_train": cache_dir / "signal_lab_df_train.parquet",
-        "df_val": cache_dir / "signal_lab_df_val.parquet",
-        "df_test": cache_dir / "signal_lab_df_test.parquet",
-        "candidate_trades": cache_dir / "signal_lab_candidate_trades.parquet",
-        "c_train": cache_dir / "signal_lab_c_train.parquet",
-        "c_val": cache_dir / "signal_lab_c_val.parquet",
-        "c_test": cache_dir / "signal_lab_c_test.parquet",
-        "wallet_metrics": cache_dir / "signal_lab_wallet_metrics.parquet",
-        "hold_metrics": cache_dir / "signal_lab_hold_metrics.parquet",
-        "restricted": cache_dir / "signal_lab_df_restricted.parquet",
-        "copy_wallets": cache_dir / "signal_lab_copy_wallets.pkl",
-        "conditions": cache_dir / "signal_lab_conditions.pkl",
-        "signal_sets": cache_dir / "signal_lab_signal_sets.pkl",
-        "residual_fit": cache_dir / "signal_lab_residual_fit.pkl",
-    }
-
-    if not force and all(path.exists() for path in paths.values()):
-        import pickle
-
-        df_full = pd.read_parquet(paths["df_full"])
-        df_train = pd.read_parquet(paths["df_train"])
-        df_val = pd.read_parquet(paths["df_val"])
-        df_test = pd.read_parquet(paths["df_test"])
-        candidate_trades = pd.read_parquet(paths["candidate_trades"])
-        c_train = pd.read_parquet(paths["c_train"])
-        c_val = pd.read_parquet(paths["c_val"])
-        c_test = pd.read_parquet(paths["c_test"])
-        wallet_metrics = pd.read_parquet(paths["wallet_metrics"])
-        hold_metrics = pd.read_parquet(paths["hold_metrics"])
-        restricted = pd.read_parquet(paths["restricted"])
-        with open(paths["copy_wallets"], "rb") as fh:
-            copy_wallets = pickle.load(fh)
-        with open(paths["conditions"], "rb") as fh:
-            conditions = pickle.load(fh)
-        with open(paths["signal_sets"], "rb") as fh:
-            signal_sets = pickle.load(fh)
-        with open(paths["residual_fit"], "rb") as fh:
-            residual_fit = pickle.load(fh)
-        engine = PositionSignalEngine(restricted)
-        return Stage1Workspace(
-            df_full=df_full,
-            df_train=df_train,
-            df_val=df_val,
-            df_test=df_test,
-            wallet_metrics=wallet_metrics,
-            hold_metrics=hold_metrics,
-            copy_wallets=set(copy_wallets),
-            candidate_trades=candidate_trades,
-            candidate_splits={"train": c_train, "val": c_val, "test": c_test},
-            conditions=set(conditions),
-            signal_sets={k: set(v) for k, v in signal_sets.items()},
-            engine=engine,
-            residual_fit=residual_fit,
-            set_tables_cache={},
-        )
-
-    ws = build_stage1_workspace(
-        tags=tags,
-        copy_rules=copy_rules,
-        archetype_min_trade_count=archetype_min_trade_count,
-    )
-    import pickle
-
-    ws.df_full.to_parquet(paths["df_full"])
-    ws.df_train.to_parquet(paths["df_train"])
-    ws.df_val.to_parquet(paths["df_val"])
-    ws.df_test.to_parquet(paths["df_test"])
-    ws.candidate_trades.to_parquet(paths["candidate_trades"])
-    ws.candidate_splits["train"].to_parquet(paths["c_train"])
-    ws.candidate_splits["val"].to_parquet(paths["c_val"])
-    ws.candidate_splits["test"].to_parquet(paths["c_test"])
-    ws.wallet_metrics.to_parquet(paths["wallet_metrics"])
-    ws.hold_metrics.to_parquet(paths["hold_metrics"])
-    ws.df_full[ws.df_full["condition_id"].isin(ws.conditions)][_ENGINE_COLS].to_parquet(paths["restricted"])
-    with open(paths["copy_wallets"], "wb") as fh:
-        pickle.dump(sorted(ws.copy_wallets), fh)
-    with open(paths["conditions"], "wb") as fh:
-        pickle.dump(sorted(ws.conditions), fh)
-    with open(paths["signal_sets"], "wb") as fh:
-        pickle.dump({k: sorted(v) for k, v in ws.signal_sets.items()}, fh)
-    with open(paths["residual_fit"], "wb") as fh:
-        pickle.dump(ws.residual_fit, fh)
-    return ws
+def restrict_trades(df_full: pd.DataFrame, conditions: Iterable[str]) -> pd.DataFrame:
+    """Trades restricted to ``conditions`` — the checkpoint-index input."""
+    return df_full[df_full["condition_id"].isin(conditions)][_ENGINE_COLS].copy()
 
 
 def attach_position_signal_panel(
-    workspace: Stage1Workspace,
-    signal_sets: dict[str, Iterable[str]] | None = None,
+    trades: pd.DataFrame,
+    splits: dict[str, pd.DataFrame],
+    filters: Iterable[WalletFilter],
     *,
-    candidate_splits: dict[str, pd.DataFrame] | None = None,
-    kinds: list[tuple[str, str]] | None = None,
-    fresh_tau_ns: int | None = None,
+    kinds: list[SignalKind] | None = None,
+    fresh_kinds: list[SignalKind] | None = None,
+    taus_h: list[int] | None = None,
+    wallet_metrics: pd.DataFrame,
+    hold_metrics: pd.DataFrame,
 ) -> tuple[dict[str, pd.DataFrame], list[str]]:
-    """Attach one or more position-signal families to candidate splits."""
-    frames = (
-        workspace.clone_candidate_splits()
-        if candidate_splits is None
-        else {name: frame.copy(deep=True) for name, frame in candidate_splits.items()}
-    )
-    chosen_sets = signal_sets or workspace.signal_sets
-    all_kinds = kinds or (
-        DEFAULT_FRESH_SIGNAL_KINDS if fresh_tau_ns is not None else DEFAULT_SIGNAL_KINDS
-    )
+    """Attach position-signal families to candidate splits.
+
+    For each wallet filter, attaches the base ``kinds`` (default pos/val x
+    own/opp) and, for each tau hour in ``taus_h``, the fresh counterpart of
+    every kind in ``fresh_kinds`` (defaults to ``kinds``) with the tau baked
+    into the column name (``sig_fval_opp_6h_flipper``).  The checkpoint index
+    is built once over ``trades``.
+    """
+    frames = {name: frame.copy(deep=True) for name, frame in splits.items()}
+    engine = PositionSignalEngine(trades)
+    all_kinds = list(kinds or DEFAULT_SIGNAL_KINDS)
+    fresh = list(fresh_kinds if fresh_kinds is not None else all_kinds)
+    taus = [int(t) for t in (taus_h or ())]
 
     signal_cols: list[str] = []
-    for set_name, wallets in chosen_sets.items():
-        cache_key = (set_name, fresh_tau_ns)
-        cached_tables = workspace.set_tables_cache.get(cache_key)
-        if cached_tables is None:
-            A, B = workspace.engine.build_set(
-                set(wallets),
-                conditions=workspace.conditions,
-                fresh_tau_ns=fresh_tau_ns,
-            )
-            workspace.set_tables_cache[cache_key] = (A, B)
-        else:
-            A, B = cached_tables
+    for flt in filters:
+        wallets = set(flt(wallet_metrics, hold_metrics))
+        A, B = engine.build_set(wallets)
         for frame in frames.values():
-            workspace.engine.attach_position_signals(frame, set_name, A, B)
-        for kind, var in all_kinds:
-            col = f"sig_{kind}_{var}_{set_name}"
+            attach_position_signals(frame, flt.name, A, B)
+        for kind in all_kinds:
+            col = signal_col_name(kind, flt.name)
             if col in frames["train"].columns:
                 signal_cols.append(col)
+        for tau_h in taus:
+            A, B = engine.build_set(
+                wallets, fresh_tau_ns=tau_h * 60 * 60 * 1_000_000_000
+            )
+            for frame in frames.values():
+                attach_position_signals(frame, flt.name, A, B, fresh_tau_h=tau_h)
+            for kind in fresh:
+                col = signal_col_name(kind.fresh(), flt.name, tau_h=tau_h)
+                if col in frames["train"].columns:
+                    signal_cols.append(col)
     return frames, signal_cols
+
+
+def run_strategy(
+    df_full: pd.DataFrame,
+    wallet_metrics: pd.DataFrame,
+    hold_metrics: pd.DataFrame,
+    strategy: StrategyProtocol,
+) -> tuple[dict[str, pd.DataFrame], list[str]]:
+    """Run a declarative strategy end-to-end.
+
+    Rebuilds the candidate universe from the strategy's copy-wallet filter,
+    re-splits it chronologically, re-residualizes ROI on that universe's
+    training split, restricts the trade frame to the candidate conditions, and
+    returns ``(splits, signal_cols)`` ready for :func:`evaluate_signal_panel`.
+    """
+    copy_wallets = set(strategy.copy_mask(wallet_metrics, hold_metrics))
+    splits = candidate_splits_for(df_full, copy_wallets)
+    conditions: set[str] = set()
+    for frame in splits.values():
+        conditions.update(frame["condition_id"].unique())
+    trades = restrict_trades(df_full, conditions)
+    splits = strategy.calculate_signals(
+        splits,
+        trades=trades,
+        wallet_metrics=wallet_metrics,
+        hold_metrics=hold_metrics,
+    )
+    return splits, strategy.get_signal_columns()
 
 
 def evaluate_signal_panel(
@@ -554,20 +436,3 @@ def evaluate_threshold_grid(
     out = pd.DataFrame(rows)
     out["pnl_per_trade_net"] = out["copyable_pnl_net"] / out["trades"].clip(lower=1)
     return out
-
-
-def summarize_workspace(workspace: Stage1Workspace) -> pd.DataFrame:
-    """Compact workspace summary for notebook display."""
-    return pd.DataFrame(
-        [
-            {
-                "copy_wallets": len(workspace.copy_wallets),
-                "candidate_trades": len(workspace.candidate_trades),
-                "candidate_conditions": len(workspace.conditions),
-                "train_candidates": len(workspace.candidate_splits["train"]),
-                "val_candidates": len(workspace.candidate_splits["val"]),
-                "test_candidates": len(workspace.candidate_splits["test"]),
-                "signal_sets": len(workspace.signal_sets),
-            }
-        ]
-    )

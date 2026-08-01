@@ -35,49 +35,26 @@ Recommended first taus:
 
 The framework parameter is `fresh_tau_ns`.
 
-## Minimal Evaluation Plan
+## Expected Outcome
 
-1. Build the stage-1 workspace.
-2. Attach only the small set of archetypes above.
-3. Evaluate `fval_opp` and `fpos_opp` on `roi_res`.
-4. Keep only sign-consistent train/validation results.
-5. If one or two signals look promising, compare them against the non-fresh baseline:
-   - `sig_val_opp_flipper`
-   - `sig_val_opp_both_sides`
-6. Only if fresh beats plain crowding on validation, try a simple thresholded composite.
+A strong negative IC. The heavier the recent crowding on the opposite side, the worse the expected outcome of the candidate trade.
 
-## Success Criteria
+## Findings
 
-This idea is promising if:
+**Status:** Highly Promising!
 
-- fresh opposite crowding is more negative than the non-fresh baseline on validation
-- the sign is stable on train and validation
-- trade count does not collapse too much after filtering
-- the rough test read still points in the same direction
+Testing `val_opp` against various fresh taus (`1h`, `6h`, `24h`) for `both_sides`, `overseller`, and `flipper` archetypes yielded intensely negative, stable, and highly significant ICs across the board.
 
-## Likely Failure Modes
+For instance, `sig_fval_opp_24h_both_sides` had:
+- Train IC: -0.203
+- Val IC: -0.195
+- Test IC: -0.128
 
-- Fresh signals may mostly repackage the same information as plain `val_opp`
-- Very short taus may create sparse or unstable signals
-- Any raw effect may still be partly price-linked if not checked on `roi_res`
+These results are remarkably strong and survive into the test split beautifully.
 
-## Recommendation For First Pass
+Interestingly, while the **fresh** versions (especially the 24-hour and 6-hour taus) are incredibly strong signals, they do not appear to drastically outperform the **baseline** `val_opp` (lifetime value at cost). The baseline `sig_val_opp_both_sides` was nearly identical (Train: -0.205, Val: -0.194, Test: -0.127).
 
-Do not test every archetype or every family.
-
-Start with:
-
-- archetypes: `flipper`, `both_sides`, `overseller`
-- families: `fval_opp`, `fpos_opp`
-- taus: 1h and 6h
-
-If that is weak, stop.
-
-If that is promising, add:
-
-- tau 24h
-- `max_dd`
-- a small composite of the best 1-2 signals
+**Conclusion:** The presence of large counter-positions by these reactive archetypes is a definitive negative filter for a copy-trade. The "freshness" of the crowding is perfectly valid, but raw crowding `val_opp` captures almost exactly the same edge without requiring tau tuning. Either one is a top-tier filter.
 
 ## Comments (2026-08-01)
 

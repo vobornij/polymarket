@@ -29,7 +29,11 @@ from signal_lab.signal_lib import (
     fit_roi_residualizer,
     residualized_roi,
 )
-from signal_lab.signal_engines import PositionSignalEngine, position_report
+from signal_lab.signal_engines import (
+    PositionSignalEngine,
+    attach_position_signals,
+    position_report,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -222,7 +226,7 @@ def test_engine_matches_brute_force():
              dt=pd.Timestamp("2026-01-01 00:00:20", tz="UTC"), price=0.55),
     ])
     A, B = engine.build_set(wallets, conditions=conditions)
-    engine.attach_position_signals(cand, "arch", A, B)
+    attach_position_signals(cand, "arch", A, B)
 
     for _, r in cand.iterrows():
         pos_bf, vac_bf = _brute_force_position(df, wallets, r["condition_id"],
@@ -244,7 +248,7 @@ def test_engine_matches_brute_force():
                             dt=pd.Timestamp("2026-01-01 00:00:18", tz="UTC"),
                             price=0.55)])
     A2, B2 = engine.build_set(wallets, conditions=conditions)
-    engine.attach_position_signals(c2, "arch", A2, B2)
+    attach_position_signals(c2, "arch", A2, B2)
     assert c2.iloc[0]["sig_pos_own_arch"] == 0.0
 
 
@@ -253,18 +257,15 @@ def test_engine_matches_brute_force():
 # ---------------------------------------------------------------------------
 
 
-class _StubEngine:
+def _stub_build(trades, wallets, conditions=None, fresh_tau_ns=None):
+    """Injected build_fn: no real position tables."""
+    return None, None
+
+
+def _stub_attach(fn):
     """Injects a synthetic signal column; exercises real selection logic."""
 
-    def __init__(self, good_signal_fn, bad_signal_fn):
-        self.good = good_signal_fn
-        self.bad = bad_signal_fn
-
-    def build_set(self, wallets, conditions=None):
-        return None, None
-
-    def attach_position_signals(self, df_c, set_name, A, B, by_cols=None):
-        fn = self.good if "good" in set_name else self.bad
+    def _attach(df_c, set_name, A, B, fresh_tau_h=None):
         vals = np.asarray(fn(df_c), dtype=float)
         for var in ("own", "opp", "total"):
             df_c[f"sig_pos_{var}_{set_name}"] = vals
@@ -273,6 +274,8 @@ class _StubEngine:
         df_c[f"sig_avgc_opp_{set_name}"] = vals
         df_c[f"sig_uwl_own_{set_name}"] = vals
         df_c[f"sig_uwl_opp_{set_name}"] = vals
+
+    return _attach
 
 
 def _candidate_frame(seed=0, n=3_000):
@@ -312,16 +315,20 @@ def test_position_report_selects_known_signal_and_rejects_noise():
         df_c["_noise"] = noise_sig[offset:offset + n]
         offset += n
 
-    engine = _StubEngine(good_signal_fn=lambda df: df["_good"],
-                         bad_signal_fn=lambda df: df["_noise"])
     conds = set(c_train["condition_id"].unique())
 
-    rep_good, sel_good = position_report(engine, c_train, c_val, c_test,
-                                         {"w1"}, "good_set",
-                                         presence_min=0.1, conditions=conds)
-    rep_bad, sel_bad = position_report(engine, c_train, c_val, c_test,
-                                       {"w2"}, "bad_set",
-                                       presence_min=0.1, conditions=conds)
+    rep_good, sel_good = position_report(
+        c_train, c_train, c_val, c_test, {"w1"}, "good_set",
+        presence_min=0.1, conditions=conds,
+        build_fn=_stub_build,
+        attach_fn=_stub_attach(lambda df: df["_good"]),
+    )
+    rep_bad, sel_bad = position_report(
+        c_train, c_train, c_val, c_test, {"w2"}, "bad_set",
+        presence_min=0.1, conditions=conds,
+        build_fn=_stub_build,
+        attach_fn=_stub_attach(lambda df: df["_noise"]),
+    )
 
     # default kinds = pos/val x own/opp (4 variants per archetype)
     assert len(sel_good) == 4, f"known signal should be selected, got {sel_good}"

@@ -74,12 +74,19 @@ def load_trades(
     trades_dir: Path = DEFAULT_TRADES_DIR,
     mdf: pd.DataFrame | None = None,
     tags: set[str] | None = DEFAULT_TAGS,
+    max_shards: int | None = None,
 ) -> pd.DataFrame:
-    """Load trade shards, join with markets, clean, and compute PnL columns."""
+    """Load trade shards, join with markets, clean, and compute PnL columns.
+
+    ``max_shards`` limits how many shards are read (fast partial loads for
+    debugging); ``None`` reads all shards.
+    """
     if mdf is None:
         mdf = load_markets(trades_dir, tags)
 
     trade_files = sorted(trades_dir.glob("*.parquet"))
+    if max_shards is not None:
+        trade_files = trade_files[:max_shards]
     print(f"Loading {len(trade_files)} trade shards...")
 
     df_full = pd.concat(
