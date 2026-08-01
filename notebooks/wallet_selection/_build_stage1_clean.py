@@ -1,0 +1,524 @@
+"""
+Build the clean stage1_experimental notebook.
+
+Removes the bad-leader / quality-wallet proximity signals, the wallet-set
+proximity grid sweep, TEST_MODE, VWAP, and the tier tests.  Signal-quality and
+signal-engine code now lives in modules (signal_lib / signal_engines); the
+notebook imports them.  Signals evaluated are generic aggregate-position
+families (pos / val / avgc / uwl) per wallet archetype, applied to the
+pre-selected copy universe.
+"""
+import json
+import uuid
+
+from pathlib import Path
+
+OUT = Path(__file__).parent / "stage1_experimental.ipynb"
+
+
+def cid():
+    return uuid.uuid4().hex[:12]
+
+
+def md(source):
+    return {"cell_type": "markdown", "id": cid(), "metadata": {}, "source": source}
+
+
+def code(source):
+    return {"cell_type": "code", "execution_count": None, "id": cid(),
+            "metadata": {}, "outputs": [], "source": source}
+
+
+cells = []
+
+cells.append(md(
+    "# Stage 1: Experimental — Copy-wallet position signals\n\n"
+    "Select the **copy universe** (profitable, diversified, stable wallets)\n"
+    "from train-period metrics, then evaluate **generic aggregate-position\n"
+    "signals** of wallet archetypes (gamblers, whales, retail, oversellers,\n"
+    "scalpers, ...) on the candidate BUY trades:\n\n"
+    "- `pos_*`: aggregate open quantity the archetype holds on the token\n"
+    "- `val_*`: aggregate value-at-cost (USDC) held\n\n"
+    "Methodology (see the review in `position_signals.md`):\n\n"
+    "1. Forward copyable ROI is residualized against price (train-fitted,\n"
+    "   fixed to val/test) so the favorite/price effect (IC(price, roi) ~ +0.5)\n"
+    "   does not masquerade as wallet alpha.\n"
+    "2. Signals are the non-redundant pos/val x own/opp variants per archetype.\n"
+    "3. Selection = sign-consistent IC on train + validation **and** a\n"
+    "   bootstrap CI of the pooled train+val IC excluding 0.\n"
+    "4. Combination rank-normalizes signals before weighting; the strategy is\n"
+    "   evaluated **net of an assumed taker cost**.\n\n"
+    "The split is by market **end date** (`split_data(..., 'chronological')`)\n"
+    "so no contract spans the train/val/test boundary.  Library code lives in\n"
+    "`signal_lib.py` (IC/IR/significance/combination) and `signal_engines.py`\n"
+    "(archetype sets + position engine)."
+))
+
+cells.append(code(
+    "%load_ext autoreload\n"
+    "%autoreload 2\n"
+    "\n"
+    "import numpy as np\n"
+    "import pandas as pd\n"
+    "from IPython.display import display\n"
+    "\n"
+    "from lib import (\n"
+    "    load_trades,\n"
+    "    split_data,\n"
+    "    compute_copyable_notional,\n"
+    "    compute_opening_metrics,\n"
+    "    DEFAULT_TAGS,\n"
+    ")\n"
+    "from polymarket_analysis.wallet_selection.volatility import compute_wallet_metrics\n"
+    "from signal_lib import (\n"
+    "    compute_event_ic,\n"
+    "    compute_event_ir,\n"
+    "    signal_quality_report,\n"
+    "    coincidence_rate,\n"
+    "    ic_correlation_matrix,\n"
+    "    fit_roi_residualizer,\n"
+    "    residualized_roi,\n"
+    "    cs_rank,\n"
+    "    compute_optimal_weights,\n"
+    "    apply_composite_score,\n"
+    "    evaluate_strategy,\n"
+    ")\n"
+    "from signal_engines import (\n"
+    "    PositionSignalEngine,\n"
+    "    compute_hold_time_metrics,\n"
+    "    archetype_sets,\n"
+    "    position_report,\n"
+    ")\n"
+))
+
+cells.append(md("## Parameters"))
+
+cells.append(code(
+    "# Copy universe (train-period wallet metrics)\n"
+    "COPY_MIN_BUY_ROI = 0.02\n"
+    "COPY_MIN_BUCKETS = 20\n"
+    "COPY_MIN_MARKETS = 15\n"
+    "COPY_MIN_TRADE_COUNT = 100\n"
+    "COPY_MAX_DD_TO_PNL = 0.6\n"
+    "COPY_MIN_COPYABLE_ROI = 0.05\n"
+    "\n"
+    "# Archetype universe\n"
+    "ARCH_MIN_TRADE_COUNT = 100\n"
+    "\n"
+    "# Signal selection (on price-residualized ROI)\n"
+    "IC_ALPHA = 0.05\n"
+    "BOOT_ITER = 500\n"
+    "BOOT_SEED = 42\n"
+    "PRESENCE_MIN = 0.005\n"
+    "\n"
+    "# Non-redundant position-signal variants per archetype (pos/val x own/opp;\n"
+    "# 'total' = own+opp and avgc/uwl are algebraic composites of pos/val/price)\n"
+    "SIGNAL_KINDS = [('pos', 'own'), ('pos', 'opp'), ('val', 'own'), ('val', 'opp')]\n"
+))
+
+cells.append(md("## Load data"))
+
+cells.append(code(
+    "df_full = load_trades()\n"
+    "df_full = compute_copyable_notional(df_full)\n"
+    "df_train, df_val, df_test = split_data(df_full, method='chronological')\n"
+    "\n"
+    "print(f\"Trades: full={len(df_full):,}  train={len(df_train):,}  \"\n"
+    "      f\"val={len(df_val):,}  test={len(df_test):,}\")\n"
+))
+
+cells.append(md("## Compute wallet metrics on training data"))
+
+cells.append(code(
+    "wallet_vol, _ = compute_wallet_metrics(df_train)\n"
+    "\n"
+    "wallet_vol[\"copyable_pnl_factor\"] = np.clip(\n"
+    "    wallet_vol[\"copyable_pnl\"] / wallet_vol[\"total_pnl\"].replace(0, np.nan),\n"
+    "    0, 1.0,\n"
+    ").fillna(0.0)\n"
+    "wallet_vol[\"copyable_roi\"] = wallet_vol[\"average_roi\"] * wallet_vol[\"copyable_pnl_factor\"]\n"
+    "\n"
+    "opening_metrics = compute_opening_metrics(df_train)\n"
+    "wallet_vol = wallet_vol.merge(opening_metrics, on=\"wallet\", how=\"left\")\n"
+    "for c in [\"opening_roi\", \"opening_pnl\", \"opening_copyable_roi\", \"opening_copyable_pnl\"]:\n"
+    "    wallet_vol[c] = wallet_vol[c].fillna(0.0)\n"
+    "\n"
+    "print(f\"Wallets with metrics: {len(wallet_vol)}\")\n"
+    "wallet_vol[[\"wallet\", \"buy_roi\", \"sell_roi\", \"copyable_pnl\",\n"
+    "           \"copyable_roi\", \"num_buckets\"]].head(10)\n"
+))
+
+cells.append(md("## Define the copy universe (candidate trades)\n\n"
+                "BUY trades by wallets that pass a quality + stability filter. "
+                "These are the trades we could copy; **all evaluation** (selection "
+                "ICs, quality, firing, PnL) is measured on candidate trades only. "
+                "Signal *values* come from full-dataset archetype positions "
+                "(the engine is built on `df_full`), but every IC and strategy "
+                "metric below is computed on `c_train`/`c_val`/`c_test`."))
+
+cells.append(code(
+    "copy_mask = (\n"
+    "    (wallet_vol['buy_roi'] >= COPY_MIN_BUY_ROI)\n"
+    "    & (wallet_vol['num_buckets'] >= COPY_MIN_BUCKETS)\n"
+    "    & (wallet_vol['num_markets'] >= COPY_MIN_MARKETS)\n"
+    "    & (wallet_vol['trade_count'] >= COPY_MIN_TRADE_COUNT)\n"
+    "    & (wallet_vol['max_drawdown_to_pnl'].fillna(1.0) <= COPY_MAX_DD_TO_PNL)\n"
+    "    & (wallet_vol['copyable_roi'].fillna(0.0) >= COPY_MIN_COPYABLE_ROI)\n"
+    ")\n"
+    "copy_wallets = set(wallet_vol.loc[copy_mask, 'wallet'])\n"
+    "print(f\"Copy universe: {len(copy_wallets)} wallets\")\n"
+    "\n"
+    "candidate_trades = df_full[\n"
+    "    df_full['wallet'].isin(copy_wallets) & (df_full['side'] == 'BUY')\n"
+    "].copy()\n"
+    "assert (candidate_trades['side'] == 'BUY').all(), \"candidate trades must be BUY-only\"\n"
+    "\n"
+    "c_train, c_val, c_test = split_data(candidate_trades, method='chronological')\n"
+    "print(f\"Candidate BUY trades: train={len(c_train):,}  val={len(c_val):,}  \"\n"
+    "      f\"test={len(c_test):,}\")\n"
+    "\n"
+    "conditions = set(candidate_trades['condition_id'].unique())\n"
+    "print(f\"Candidate conditions: {len(conditions):,}\")\n"
+))
+
+cells.append(md("## Archetype metrics and wallet sets\n\n"
+                "Per-wallet hold/flip-time metrics (train), then data-driven\n"
+                "archetype sets defined from quantiles over the active population:\n"
+                "whale, retail, gambler, overseller (deep/thin), consistent,\n"
+                "max_drawdown, both_sides, scalper, flipper."))
+
+cells.append(code(
+    "hold = compute_hold_time_metrics(df_train)\n"
+    "sets = archetype_sets(wallet_vol, hold, min_trade_count=ARCH_MIN_TRADE_COUNT)\n"
+    "\n"
+    "rows = []\n"
+    "for name, sel in sets.items():\n"
+    "    w = wallet_vol[wallet_vol['wallet'].isin(sel['wallet'])]\n"
+    "    rows.append({'set': name, 'n_wallets': len(sel),\n"
+    "                 'total_pnl': w['total_pnl'].sum(),\n"
+    "                 'trades': int(w['trade_count'].sum()),\n"
+    "                 'copyable_roi': w['copyable_roi'].mean()})\n"
+    "display(pd.DataFrame(rows).round(4))\n"
+))
+
+cells.append(md("## Position signal engine\n\n"
+                "Builds once over the full trade frame: per-trade post-position\n"
+                "checkpoints with execution-order-aware value-at-cost.  Per-set A/B\n"
+                "tables are then a fast masked cumsum, and each candidate trade gets\n"
+                "the aggregate position / value-at-cost / entry-premium / underwater\n"
+                "state of the set on its token at that time."))
+
+cells.append(code(
+    "engine = PositionSignalEngine(df_full)\n"
+))
+
+cells.append(md("## Position signal sweep\n\n"
+                "For every archetype, attach the pos/val x own/opp signal variants\n"
+                "to the candidate trades and select train+val sign-consistent\n"
+                "signals whose pooled bootstrap CI excludes 0.  ICs are computed\n"
+                "against the **price-residualized ROI** (`roi_res`), fit on train\n"
+                "only.  This is the slow cell (11 archetypes x 3 candidate frames x\n"
+                "4 signal variants)."))
+
+cells.append(code(
+    "# Fit the price residualizer on TRAIN only; apply fixed coefficients to val/test.\n"
+    "fit = fit_roi_residualizer(c_train['copyable_roi'], c_train['price'])\n"
+    "print(f'Residualizer (train): beta={fit[\"beta\"]:+.4f}  '\n"
+    "      f'intercept={fit[\"intercept\"]:+.4f}')\n"
+    "for lbl, df_c in [('train', c_train), ('val', c_val), ('test', c_test)]:\n"
+    "    df_c['roi_res'] = residualized_roi(df_c['copyable_roi'], df_c['price'], fit)\n"
+    "    ic_p = compute_event_ic(df_c['price'], df_c['roi_res'])\n"
+    "    print(f'  {lbl:5s}: IC(price, roi_res)={ic_p:+.4f}  '\n"
+    "          f'(~0 means the price effect is removed)')\n"
+    "\n"
+    "all_rows, selected = [], []\n"
+    "for name, sel in sets.items():\n"
+    "    rep, sel_cols = position_report(\n"
+    "        engine, c_train, c_val, c_test,\n"
+    "        set(sel['wallet']), name,\n"
+    "        roi_col='roi_res', kinds=SIGNAL_KINDS,\n"
+    "        presence_min=PRESENCE_MIN, alpha=IC_ALPHA,\n"
+    "        n_boot=BOOT_ITER, seed=BOOT_SEED,\n"
+    "        conditions=conditions,\n"
+    "    )\n"
+    "    all_rows.append(rep)\n"
+    "    selected.extend(sel_cols)\n"
+    "    print(f'  {name}: n_wallets={len(sel):>4}  selected={sel_cols}')\n"
+    "\n"
+    "report = pd.concat(all_rows, ignore_index=True)\n"
+    "print('\\n=== Position signal residual-ICs (test = diagnostics) ===')\n"
+    "display(report.sort_values('|IC_train|', ascending=False).round(4))\n"
+    "print(f'\\nSelected ({len(selected)}): {selected}')\n"
+))
+
+cells.append(md("## Signal quality framework\n\n"
+                "Following Grinold & Kahn: IC (Spearman rank correlation between\n"
+                "signal and the price-residualized forward ROI), IR (mean/std of\n"
+                "daily IC), hit rate (active events only), bootstrap CI.  "
+                "Implemented in `signal_lib.py`."))
+
+cells.append(code(
+    "active_cols = [c for c in selected if c in c_val.columns\n"
+    "               and c_val[c].notna().sum() > 10]\n"
+    "print(f\"Active signals: {len(active_cols)} / {len(selected)}\")\n"
+    "\n"
+    "if not active_cols:\n"
+    "    print('No active signals survived selection; diagnostics skipped')\n"
+    "else:\n"
+    "    quality = signal_quality_report(c_val, active_cols, roi_col='roi_res',\n"
+    "                                    dt_col='dt', n_bootstrap=1_000,\n"
+    "                                    bootstrap=True)\n"
+    "    display(quality.round(4))\n"
+    "\n"
+    "    diag = []\n"
+    "    for c in active_cols:\n"
+    "        diag.append({\n"
+    "            'signal': c,\n"
+    "            'presence_train': float((c_train[c] > 0).mean()),\n"
+    "            'IC_train': compute_event_ic(c_train[c], c_train['roi_res']),\n"
+    "            'IC_val': compute_event_ic(c_val[c], c_val['roi_res']),\n"
+    "            'IC_test': compute_event_ic(c_test[c], c_test['roi_res']),\n"
+    "        })\n"
+    "    print('\\nPer-split residual-IC diagnostics (test = out-of-sample):')\n"
+    "    display(pd.DataFrame(diag).round(4))\n"
+))
+
+cells.append(md("## Signal overlap analysis\n\n"
+                "How redundant are the selected signals? Coincidence rate (do they\n"
+                "fire together), IC correlation (are predictions redundant), and\n"
+                "conditional IC (unique contribution)."))
+
+cells.append(code(
+    "if len(active_cols) >= 2:\n"
+    "    print(\"1. Coincidence rate (P(both fire | either fires)):\")\n"
+    "    n = len(active_cols)\n"
+    "    coin = np.full((n, n), np.nan)\n"
+    "    for i, s1 in enumerate(active_cols):\n"
+    "        for j, s2 in enumerate(active_cols):\n"
+    "            coin[i, j] = 1.0 if i == j else coincidence_rate(c_val[s1], c_val[s2])\n"
+    "    display(pd.DataFrame(coin, index=active_cols, columns=active_cols).round(3))\n"
+    "\n"
+    "    print(\"\\n2. IC correlation (signal value correlation):\")\n"
+    "    display(ic_correlation_matrix(c_val, active_cols).round(3))\n"
+    "\n"
+    "    print(\"\\n3. Conditional IC (unique contribution on neutral events):\")\n"
+    "    for s in active_cols:\n"
+    "        other = [c for c in active_cols if c != s]\n"
+    "        neutral = np.ones(len(c_val), dtype=bool)\n"
+    "        for o in other:\n"
+    "            neutral &= (c_val[o].abs() < 0.01) | c_val[o].isna()\n"
+    "        if neutral.sum() < 20:\n"
+    "            continue\n"
+    "        ic_cond = compute_event_ic(c_val.loc[neutral, s], c_val.loc[neutral, 'roi_res'])\n"
+    "        ic_full = compute_event_ic(c_val[s], c_val['roi_res'])\n"
+    "        print(f\"    {s:35s}: full_IC={ic_full:.4f}  \"\n"
+    "              f\"conditional_IC={ic_cond:.4f}  (n={neutral.sum()})\")\n"
+    "else:\n"
+    "    print(\"Need at least 2 active signals for overlap analysis\")\n"
+))
+
+cells.append(md("## Signal combination\n\n"
+                "Combine signals into a composite score.  Signals are **rank-\n"
+                "normalized** (`cs_rank`, maps to [-1, 1]) so dollar-scale\n"
+                "differences between whales and retail do not dominate, and all\n"
+                "weight schemes are **direction-correct** (signed by IC) so\n"
+                "negative-IC signals contribute as short candidates.  Schemes:\n"
+                "equal magnitude, IC-weighted, and shrinkage Markowitz\n"
+                "(Grinold & Kahn Ch. 13) on the rank-transformed signals."))
+
+cells.append(code(
+    "if not active_cols:\n"
+    "    print('No active signals found')\n"
+    "else:\n"
+    "    # Rank-normalize each signal to [-1, 1] before combining (scale-free).\n"
+    "    rank_cols = [f'rank_{c}' for c in active_cols]\n"
+    "    for df_c in (c_train, c_val, c_test):\n"
+    "        for c in active_cols:\n"
+    "            df_c[f'rank_{c}'] = cs_rank(df_c[c].fillna(0.0))\n"
+    "\n"
+    "    ic_vals = {c: compute_event_ic(c_val[c], c_val['roi_res'])\n"
+    "               for c in active_cols}\n"
+    "    ic_signed = {c: (v if np.isfinite(v) else 0.0)\n"
+    "                 for c, v in ic_vals.items()}\n"
+    "    n = len(active_cols)\n"
+    "    w_equal = pd.Series({f'rank_{c}': np.sign(ic_signed[c]) / n\n"
+    "                         for c in active_cols})\n"
+    "\n"
+    "    ic_sum = sum(abs(v) for v in ic_signed.values())\n"
+    "    w_ic = pd.Series({f'rank_{c}': (ic_signed[c] / ic_sum if ic_sum > 0\n"
+    "                                    else np.sign(ic_signed[c]) / n)\n"
+    "                     for c in active_cols})\n"
+    "\n"
+    "    w_shrink = compute_optimal_weights(c_val, rank_cols, 'roi_res',\n"
+    "                                      shrinkage=0.5)\n"
+    "\n"
+    "    schemes = {'equal': w_equal, 'ic_weighted': w_ic,\n"
+    "               'shrinkage_markowitz': w_shrink}\n"
+    "    for name, w in schemes.items():\n"
+    "        print(f'\\n  {name}:')\n"
+    "        for c, wt in w.items():\n"
+    "            print(f'    {c:45s} = {wt:.4f}')\n"
+    "        for df_c in [c_train, c_val, c_test]:\n"
+    "            df_c[f'composite_{name}'] = apply_composite_score(df_c, rank_cols, w)\n"
+    "\n"
+    "    comp_rows = []\n"
+    "    for name in schemes:\n"
+    "        cc = f'composite_{name}'\n"
+    "        comp_rows.append({\n"
+    "            'composite': cc,\n"
+    "            'IC': compute_event_ic(c_val[cc], c_val['roi_res']),\n"
+    "            'IR': compute_event_ir(c_val[cc], c_val['roi_res'], c_val['dt'],\n"
+    "                                   freq='D'),\n"
+    "        })\n"
+    "    print('\\nComposite signal quality (validation, on residualized ROI):')\n"
+    "    display(pd.DataFrame(comp_rows).round(4))\n"
+))
+
+cells.append(md("## Strategy evaluation\n\n"
+                "When composite_score >= threshold, copy the BUY trade. Grid-search\n"
+                "the threshold on validation (max gross copyable PnL); report gross\n"
+                "on the test set, always vs. the **copy-all-candidate-trades**\n"
+                "baseline.  Because thresholds near the bottom of the [-1, 1]\n"
+                "composite range fire almost everything, a **firing-band table**\n"
+                "(fire the top 25/50/75/90/99% of candidates) shows where selection\n"
+                "actually adds value vs. copying everything.  All counts are of\n"
+                "candidate trades."))
+
+cells.append(code(
+    "candidates = [c for c in ('composite_shrinkage_markowitz',\n"
+    "                          'composite_ic_weighted', 'composite_equal')\n"
+    "              if c in c_val.columns and c_val[c].notna().sum() >= 10]\n"
+    "if not candidates:\n"
+    "    print('No composite signal available; strategy evaluation skipped')\n"
+    "else:\n"
+    "    best_composite = candidates[0]\n"
+    "    print(f'Using: {best_composite}')\n"
+    "\n"
+    "    thresholds = np.arange(-1.0, 1.01, 0.05)\n"
+    "    val_df = pd.DataFrame([evaluate_strategy(c_val, best_composite, t)\n"
+    "                           for t in thresholds])\n"
+    "    val_df['pnl_per_trade'] = (val_df['copyable_pnl']\n"
+    "                               / val_df['trades'].clip(lower=1))\n"
+    "\n"
+    "    print('\\nGrid search (validation): top 10 by copyable_pnl')\n"
+    "    display(val_df.sort_values('copyable_pnl', ascending=False)\n"
+    "            .head(10).round(2))\n"
+    "\n"
+    "    cand = val_df[val_df['trades'] >= 20]\n"
+    "    best_row = (cand if not cand.empty else val_df)\\\n"
+    "        .sort_values('copyable_pnl', ascending=False).iloc[0]\n"
+    "    best_threshold = float(best_row['threshold'])\n"
+    "    print(f'\\nBest threshold: {best_threshold:.2f}  '\n"
+    "          f'(copyable_pnl=${best_row[\"copyable_pnl\"]:,.0f}, '\n"
+    "          f'{best_row[\"trades\"]} trades)')\n"
+))
+
+cells.append(code(
+    "if 'best_threshold' not in globals():\n"
+    "    print('No strategy to evaluate (skipped above)')\n"
+    "else:\n"
+    "    test_result = evaluate_strategy(c_test, best_composite, best_threshold)\n"
+    "    all_result = evaluate_strategy(c_test, best_composite, -np.inf)\n"
+    "\n"
+    "    print('Test set evaluation (candidate trades):')\n"
+    "    print(f'  Threshold: {best_threshold:.2f}')\n"
+    "    print(f'  Trades fired: {test_result[\"trades\"]:,} / {len(c_test):,} '\n"
+    "          f'candidates ({test_result[\"firing_rate\"]:.1%})')\n"
+    "    print(f'  Copyable PnL: ${test_result[\"copyable_pnl\"]:,.0f}')\n"
+    "    print(f'  Copyable ROI: {test_result[\"copyable_roi\"]:.4f}')\n"
+    "    print(f'  Total PnL: ${test_result[\"total_pnl\"]:,.0f}')\n"
+    "    print(f'  PnL per trade: '\n"
+    "          f'${test_result[\"copyable_pnl\"] / max(test_result[\"trades\"], 1):.2f}')\n"
+    "    print('\\nvs. copying ALL candidate trades:')\n"
+    "    print(f'  Copyable PnL (all): ${all_result[\"copyable_pnl\"]:,.0f}')\n"
+    "    print(f'  Copyable ROI (all): {all_result[\"copyable_roi\"]:.4f}')\n"
+    "\n"
+    "    print('\\nFiring-band table (test set; fire top q of candidates by '\n"
+    "          'composite):')\n"
+    "    band_rows = []\n"
+    "    for q in [0.25, 0.50, 0.75, 0.90, 0.99]:\n"
+    "        thr = float(c_test[best_composite].quantile(1 - q))\n"
+    "        r = evaluate_strategy(c_test, best_composite, thr)\n"
+    "        band_rows.append({'fire': f'top {q:.0%}',\n"
+    "                          'threshold': thr,\n"
+    "                          'trades': r['trades'],\n"
+    "                          'firing_rate': r['firing_rate'],\n"
+    "                          'copyable_pnl': r['copyable_pnl'],\n"
+    "                          'copyable_roi': r['copyable_roi'],\n"
+    "                          'pnl_per_trade': (r['copyable_pnl']\n"
+    "                                            / max(r['trades'], 1))})\n"
+    "    band_rows.append({'fire': 'ALL candidates',\n"
+    "                      'threshold': -np.inf,\n"
+    "                      'trades': len(c_test),\n"
+    "                      'firing_rate': 1.0,\n"
+    "                      'copyable_pnl': all_result['copyable_pnl'],\n"
+    "                      'copyable_roi': all_result['copyable_roi'],\n"
+    "                      'pnl_per_trade': (all_result['copyable_pnl']\n"
+    "                                        / max(len(c_test), 1))})\n"
+    "    band_df = pd.DataFrame(band_rows)\n"
+    "    band_df['delta_vs_all'] = band_df['copyable_pnl'] - all_result['copyable_pnl']\n"
+    "    display(band_df.round(4))\n"
+    "\n"
+    "    print('\\n=== Strategy Summary (candidate trades) ===')\n"
+    "    for label, df_i in [('Train', c_train), ('Val', c_val), ('Test', c_test)]:\n"
+    "        r = evaluate_strategy(df_i, best_composite, best_threshold)\n"
+    "        ra = evaluate_strategy(df_i, best_composite, -np.inf)\n"
+    "        print(f'  {label:6s}: threshold={best_threshold:.2f}  '\n"
+    "              f'trades={r[\"trades\"]:>5,}/{len(df_i):>6,}  '\n"
+    "              f'cpnl=${r[\"copyable_pnl\"]:>8,.0f}  '\n"
+    "              f'croi={r[\"copyable_roi\"]:.4f}  '\n"
+    "              f'(all: cpnl=${ra[\"copyable_pnl\"]:>8,.0f}  '\n"
+    "              f'croi={ra[\"copyable_roi\"]:.4f})')\n"
+))
+
+cells.append(md("## Framework self-check (synthetic signal)\n\n"
+                "Validate the IC machinery on a synthetic signal with a *known* "
+                "Spearman correlation.  For a Gaussian copula with Pearson `rho`, "
+                "the population Spearman is `6/pi * arcsin(rho/2)`; the framework "
+                "must recover it.  (Full unit-level validation lives in "
+                "`tests/test_signal_framework.py`.)"))
+
+cells.append(code(
+    "rng = np.random.default_rng(123)\n"
+    "rho = 0.5\n"
+    "n = 50_000\n"
+    "z = rng.normal(size=n)\n"
+    "roi = rho * z + np.sqrt(1 - rho**2) * rng.normal(size=n)\n"
+    "expected = 6.0 / np.pi * np.arcsin(rho / 2)\n"
+    "ic = compute_event_ic(pd.Series(z), pd.Series(roi))\n"
+    "ir = compute_event_ir(\n"
+    "    pd.Series(z), pd.Series(roi),\n"
+    "    pd.Series(pd.date_range('2026-01-01', periods=n, freq='min', tz='UTC')),\n"
+    ")\n"
+    "print(f\"known Spearman IC={expected:.4f}  recovered IC={ic:.4f}  daily IR={ir:.3f}\")\n"
+    "assert abs(ic - expected) < 0.01, 'IC does not recover the known synthetic signal'\n"
+    "print('Framework self-check OK')\n"
+))
+
+notebook = {
+    "cells": cells,
+    "metadata": {
+        "kernelspec": {
+            "display_name": "polymarket-analysis-BY1ldWyW-py3.13",
+            "language": "python",
+            "name": "python3",
+        },
+        "language_info": {
+            "codemirror_mode": {"name": "ipython", "version": 3},
+            "file_extension": ".py",
+            "mimetype": "text/x-python",
+            "name": "python",
+            "nbconvert_exporter": "python",
+            "pygments_lexer": "ipython3",
+            "version": "3.13.7",
+        },
+    },
+    "nbformat": 4,
+    "nbformat_minor": 5,
+}
+
+with open(OUT, "w") as f:
+    json.dump(notebook, f, indent=1)
+    f.write("\n")
+
+print(f"wrote {OUT} with {len(cells)} cells")
