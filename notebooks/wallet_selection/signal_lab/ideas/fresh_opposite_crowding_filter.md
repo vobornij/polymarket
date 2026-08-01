@@ -78,3 +78,14 @@ If that is promising, add:
 - tau 24h
 - `max_dd`
 - a small composite of the best 1-2 signals
+
+## Comments (2026-08-01)
+
+- Applicability: this signal is directly applicable to stage-1 candidate BUY trades (`candidate_splits`) and can be used as a copy-filter score threshold.
+- Runtime note: most runtime comes from rebuilding per-set position tables; caching `(set_name, fresh_tau_ns)` tables made repeated runs much faster.
+- Flipper: `sig_fval_opp_flipper` is consistently slightly weaker than baseline `sig_val_opp_flipper` at 1h and 6h.
+- Both-sides: fresh is close but generally not better than baseline; at 6h it is near-tied.
+- Overseller: fresh shows the best relative behavior; `sig_fval_opp_overseller` is slightly stronger than baseline on validation at 6h/24h.
+- Max-dd: mixed; fresh underperforms baseline at 1h and is only marginally better at 6h.
+- Thresholding caveat: single-signal thresholds can look weak out-of-sample; selectivity matters because very low thresholds may keep most trades and behave like mild reweighting.
+- Composite note: a simple `val_opp + fval_opp` composite for overseller at 6h looked stronger than single-signal thresholding in the quick pass.

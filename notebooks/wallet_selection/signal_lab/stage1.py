@@ -130,6 +130,7 @@ class Stage1Workspace:
     signal_sets: dict[str, set[str]]
     engine: PositionSignalEngine
     residual_fit: dict[str, float]
+    set_tables_cache: dict[tuple[str, int | None], tuple[pd.DataFrame, pd.DataFrame]]
 
     def clone_candidate_splits(self) -> dict[str, pd.DataFrame]:
         return {
@@ -247,6 +248,7 @@ def build_stage1_workspace(
         signal_sets=signal_sets,
         engine=engine,
         residual_fit=residual_fit,
+        set_tables_cache={},
     )
 
 
@@ -320,6 +322,7 @@ def build_stage1_workspace_cached(
             signal_sets={k: set(v) for k, v in signal_sets.items()},
             engine=engine,
             residual_fit=residual_fit,
+            set_tables_cache={},
         )
 
     ws = build_stage1_workspace(
@@ -372,11 +375,17 @@ def attach_position_signal_panel(
 
     signal_cols: list[str] = []
     for set_name, wallets in chosen_sets.items():
-        A, B = workspace.engine.build_set(
-            set(wallets),
-            conditions=workspace.conditions,
-            fresh_tau_ns=fresh_tau_ns,
-        )
+        cache_key = (set_name, fresh_tau_ns)
+        cached_tables = workspace.set_tables_cache.get(cache_key)
+        if cached_tables is None:
+            A, B = workspace.engine.build_set(
+                set(wallets),
+                conditions=workspace.conditions,
+                fresh_tau_ns=fresh_tau_ns,
+            )
+            workspace.set_tables_cache[cache_key] = (A, B)
+        else:
+            A, B = cached_tables
         for frame in frames.values():
             workspace.engine.attach_position_signals(frame, set_name, A, B)
         for kind, var in all_kinds:
