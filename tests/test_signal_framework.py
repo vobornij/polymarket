@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from signal_lib import (
+from signal_lab.signal_lib import (
     compute_event_ic,
     compute_event_ir,
     bootstrap_ic,
@@ -23,10 +23,13 @@ from signal_lib import (
     signal_quality_report,
     apply_composite_score,
     evaluate_strategy,
+    cs_rank,
+    fit_rank_transformer,
+    apply_rank_transformer,
     fit_roi_residualizer,
     residualized_roi,
 )
-from signal_engines import PositionSignalEngine, position_report
+from signal_lab.signal_engines import PositionSignalEngine, position_report
 
 
 # ---------------------------------------------------------------------------
@@ -361,6 +364,34 @@ def test_composite_and_strategy_recover_known_trades():
     none = evaluate_strategy(df, "composite", 1.5)
     assert none["trades"] == 0
     assert none["copyable_pnl"] == 0.0
+
+
+def test_evaluate_strategy_reports_net_of_costs():
+    df = pd.DataFrame({
+        "composite": [1.0, 0.4],
+        "copyable_pnl": [10.0, -2.0],
+        "copyable_notional": [100.0, 50.0],
+        "pnl": [10.0, -2.0],
+        "notional": [100.0, 50.0],
+    })
+    res = evaluate_strategy(df, "composite", 0.0, cost_bps=100.0)
+    assert res["trades"] == 2
+    assert res["copyable_pnl"] == pytest.approx(8.0)
+    assert res["cost_paid"] == pytest.approx(1.5)
+    assert res["copyable_pnl_net"] == pytest.approx(6.5)
+    assert res["copyable_roi_net"] == pytest.approx(6.5 / 150.0)
+
+
+def test_train_fit_rank_transformer_matches_train_ranks_and_is_split_independent():
+    train = pd.Series([1.0, 2.0, 2.0, 4.0, 7.0])
+    fit = fit_rank_transformer(train)
+    transformed_train = apply_rank_transformer(train, fit)
+    assert np.allclose(transformed_train.to_numpy(), cs_rank(train).to_numpy())
+
+    probe = pd.Series([0.0, 2.0, 3.0, 10.0])
+    small_val = apply_rank_transformer(probe, fit)
+    large_val = apply_rank_transformer(pd.concat([probe, pd.Series(np.linspace(-5, 20, 200))], ignore_index=True), fit).iloc[:len(probe)]
+    assert np.allclose(small_val.to_numpy(), large_val.to_numpy())
 
 
 def test_bootstrap_ic_separates_signal_from_noise():

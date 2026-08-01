@@ -23,8 +23,8 @@ sys.path.insert(0, '/Users/vobornij/projects/polymarket/notebooks/wallet_selecti
 import numpy as np
 import pandas as pd
 
-from signal_lib import compute_event_ic, fit_roi_residualizer, residualized_roi
-from signal_engines import PositionSignalEngine
+from signal_lab.signal_lib import compute_event_ic, fit_roi_residualizer, residualized_roi
+from signal_lab.signal_engines import PositionSignalEngine
 
 CACHE = '/tmp/pos_explore_cache'
 T0 = pd.Timestamp('2026-05-21', tz='UTC')

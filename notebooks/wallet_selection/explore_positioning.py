@@ -21,8 +21,8 @@ import pandas as pd
 
 from lib import load_trades, split_data, compute_copyable_notional, compute_opening_metrics
 from polymarket_analysis.wallet_selection.volatility import compute_wallet_metrics
-from signal_lib import compute_event_ic
-from signal_engines import PositionSignalEngine, compute_hold_time_metrics, archetype_sets
+from signal_lab.signal_lib import compute_event_ic
+from signal_lab.signal_engines import PositionSignalEngine, compute_hold_time_metrics, archetype_sets
 
 CACHE = '/tmp/pos_explore_cache'
 os.makedirs(CACHE, exist_ok=True)
@@ -135,7 +135,7 @@ def main(step='all'):
 
 def position_report_one(engine, c_train, c_val, c_test, wallets, name, conditions=None,
                         min_ic=0.005, presence_min=0.005):
-    from signal_engines import ALL_POSITION_KINDS, position_report
+    from signal_lab.signal_engines import ALL_POSITION_KINDS, position_report
     return position_report(engine, c_train, c_val, c_test, wallets, name,
                            kinds=ALL_POSITION_KINDS, min_ic=min_ic,
                            presence_min=presence_min, conditions=conditions)
