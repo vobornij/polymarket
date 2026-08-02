@@ -228,6 +228,7 @@ def attach_position_signal_panel(
 
     signal_cols: list[str] = []
     for flt in filters:
+        print(f"       - attaching base signals for set: {flt.name}", flush=True)
         wallets = set(flt(wallet_metrics, hold_metrics))
         A, B = engine.build_set(wallets)
         for frame in frames.values():
@@ -237,6 +238,7 @@ def attach_position_signal_panel(
             if col in frames["train"].columns:
                 signal_cols.append(col)
         for tau_h in taus:
+            print(f"       - attaching fresh signals (tau={tau_h}h) for set: {flt.name}", flush=True)
             A, B = engine.build_set(
                 wallets, fresh_tau_ns=tau_h * 60 * 60 * 1_000_000_000
             )
@@ -300,7 +302,8 @@ def run_strategies(
     trades = restrict_trades(df_full, conditions)
     
     all_cols = []
-    for strategy in strategies:
+    for i, strategy in enumerate(strategies):
+        print(f"  -> [{i+1}/{len(strategies)}] Calculating signals for {strategy.name}...", flush=True)
         splits = strategy.calculate_signals(
             splits,
             trades=trades,
