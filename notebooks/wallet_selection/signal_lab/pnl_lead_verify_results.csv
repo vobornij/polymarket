@@ -1,0 +1,9 @@
+col,fold,split,fraction,floor,trades,pnl,roi_w,pnl_per_peak,sharpe_daily,mean_used
+sig_wal_trade_count,A,val,0.5,935.0,9693,1438.06,0.0144,0.2763,0.218,1217.02
+sig_wal_trade_count,B,test,0.5,769.0,10613,7622.89,0.0542,1.1257,1.135,1447.59
+sig_wal_copyable_pnl,A,val,0.5,265.338,9041,749.28,0.0071,0.1452,0.117,1276.96
+sig_wal_copyable_pnl,B,test,0.5,123.427,10433,7860.26,0.0584,1.0499,1.219,1386.16
+copy_all,A,val,,,34486,2070.13,0.0095,0.2528,0.138,2869.79
+copy_all,B,test,,,28442,9605.32,0.0468,1.1157,0.814,2349.36
+price_top50,A,val,,,19692,67.83,0.0003,0.0087,0.007,2602.03
+price_top50,B,test,,,16614,8148.81,0.0421,0.9613,1.02,2146.28

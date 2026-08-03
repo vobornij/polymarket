@@ -5,6 +5,7 @@ from .copy_wallet_quality_signals import CopyWalletQualitySignals
 from .fade_reactive_sell_flow import FadeReactiveSellFlow
 from .fresh_opposite_crowding import FreshOppositeCrowdingFilter
 from .gambler_capitulation import GamblerCapitulationSqueeze
+from .underwater_add_crowding import UnderwaterAddCrowding
 from .uwl_opp_contrarian import UwlOppContrarian
 
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     "FadeReactiveSellFlow",
     "FreshOppositeCrowdingFilter",
     "GamblerCapitulationSqueeze",
+    "UnderwaterAddCrowding",
     "UwlOppContrarian",
 ]

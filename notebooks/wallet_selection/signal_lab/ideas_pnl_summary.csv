@@ -1,0 +1,8 @@
+idea,best_signal,test_pnl_signal,test_pnl_copy_all,pnl_ratio_vs_copyall,test_sharpe_signal,test_sharpe_copy_all,test_roi_w_signal,test_roi_w_copy_all
+BigWinnerMarketCharacterization,sig_mkt_price,18936.63,18387.79,1.03,0.499,0.454,0.0589,0.057
+CopyCrowdEntryTiming,sig_ccw_recent_24h_co,708.66,18387.79,0.039,3.18,0.454,0.1252,0.057
+CopyWalletQualitySignals,sig_wal_trade_count,3198.39,18387.79,0.174,0.811,0.454,0.0876,0.057
+FadeReactiveSellFlow,sig_fsf_sell_6h_both_sides,7966.77,18387.79,0.433,0.238,0.454,0.0292,0.057
+GamblerCapitulationSqueeze,sig_uwl_opp_gambler,14189.02,18387.79,0.772,0.354,0.454,0.0483,0.057
+FreshOppositeCrowdingFilter,sig_val_opp_both_sides,9174.47,18387.79,0.499,0.225,0.454,0.0328,0.057
+UwlOppContrarian,sig_uwl_opp_gambler,14189.02,18387.79,0.772,0.354,0.454,0.0483,0.057

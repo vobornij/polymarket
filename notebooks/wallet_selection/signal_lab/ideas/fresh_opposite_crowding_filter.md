@@ -66,3 +66,37 @@ Interestingly, while the **fresh** versions (especially the 24-hour and 6-hour t
 - Max-dd: mixed; fresh underperforms baseline at 1h and is only marginally better at 6h.
 - Thresholding caveat: single-signal thresholds can look weak out-of-sample; selectivity matters because very low thresholds may keep most trades and behave like mild reweighting.
 - Composite note: a simple `val_opp + fval_opp` composite for overseller at 6h looked stronger than single-signal thresholding in the quick pass.
+
+## Re-evaluation on the fixed pipeline (2026-08-03)
+
+Status changed: **IC real, edge NOT monetizable as a copy overlay. Do not deploy as a filter/sizing signal.**
+
+Context: the `signal_lib._rankdata` bug (rank vs inv) was fixed; all ICs below are from the fixed pipeline with train-only rank normalization, Weather-only data. Full protocol and tables:
+
+- `reevaluate_crowding.py` — signal panel, decile gate, firing-rate test
+- `crowding_overlay.py` — capital-constrained ($10k) walk-forward sizing overlay; Sharpe selected on train (fold A) / train+val (fold B), reported on val / test
+- `crowding_reeval_{panel,deciles,firing}.csv`, `crowding_overlay_results.csv`, `crowding_overlay_sharpe_ci.csv`
+
+### What is real
+
+- The crowding IC is confirmed on the fixed pipeline. `sig_fval_opp_24h_both_sides` vs `roi_res`: train −0.203 / val −0.195 / test −0.128; within-price-bin IC −0.08…−0.15, sign-consistent, bootstrap excludes zero.
+- A blended copy score (negated, rank-normalized) has *consistent positive* IC on raw targets: `copy_blend` vs `copyable_roi` +0.084/+0.108/+0.098 and vs `copyable_pnl` +0.14/+0.157/+0.148; `copy_overseller` and `copy_max_dd` are strongest on raw `copyable_roi` (+0.17…+0.23).
+
+### Why it does not monetize
+
+- The score ranks `roi_res` monotonically across all splits (decile mean −0.30→+0.43 train) **but dollar PnL concentrates in the middle deciles**, and the low-crowding (high-score) tail carries little PnL.
+- Firing-rate selection (top 10/20/30/50/70/90%) is below copy-all PnL on test in every case (top-10% ≈ +106 vs 9,605 copy-all); the high-crowding deciles are the big PnL contributors ("buy cheap = more upside" effect dominates dollars).
+- Capital-constrained sizing confirms this at the Sharpe level. Deployment fold (select train+val → test):
+  - best crowding variant `copy_blend@10%` Sharpe **0.63** but deploys only ~$3.6k of the $10k (pnl_per_peak 0.03)
+  - `copy_max_dd` 0.48, `copy_overseller` 0.34
+  - **copy-all 0.81, price-favorite sizing 0.99** — both beat every crowding overlay
+  - the fold-A winner (`copy_overseller@25%`, val Sharpe 0.32 vs copy-all 0.14) flips to **−0.02 on test**
+- Block-bootstrap (7-day) Sharpe CIs on test are wide and overlap zero for both overlay and copy-all → daily Sharpe here is dominated by a few resolution days, not a stable edge.
+
+### Verdict
+
+- The roi_res IC is a real but **residualization-only** effect; it does not survive as deployable alpha in a capital-constrained copy overlay.
+- The raw-PnL edge ("copy cheap") is variance under the cap, best captured by copy-all / price-favorite sizing, not by crowding scoring.
+- **Recommendation:** do not ship a crowding-filtered or crowding-sized copy. If deploying anything from this thread, it is the plain capital-constrained copy-all (test Sharpe ~0.8, pnl/peak ~1.1), which is a separate claim from this idea.
+
+
