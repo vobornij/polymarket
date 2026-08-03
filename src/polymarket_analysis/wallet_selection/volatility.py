@@ -9,7 +9,6 @@ can be used independently (e.g. via ``profitable_wallet_analysis.ipynb``).
 from __future__ import annotations
 
 import math
-from tokenize import group
 
 import numpy as np
 import pandas as pd
@@ -52,149 +51,136 @@ def scaled_weighted_pnl_volatility(buckets: pd.DataFrame) -> float:
 # Per-wallet metric computation from pre-aggregated buckets
 # ---------------------------------------------------------------------------
 
-def _wallet_metrics_from_buckets(group: pd.DataFrame) -> pd.Series:
+def _max_drawdown(cum: np.ndarray) -> float:
+    """Largest peak-to-trough drop in a running PnL series (peak starts at 0)."""
+    peak = 0.0
+    dd = 0.0
+    for x in cum:
+        if x > peak:
+            peak = x
+        if x < peak:
+            d = peak - x
+            if d > dd:
+                dd = d
+    return dd
+
+
+def _wallet_metrics_from_buckets(buckets: pd.DataFrame) -> pd.DataFrame:
     """Compute per-wallet metrics from a pre-aggregated bucket DataFrame.
 
-    *group* is a subset of the buckets DataFrame for a single wallet and must
-    contain: ``pnl``, ``notional``, ``condition_id``, ``copyable_pnl``, ``quantity``, ``copyable_qty``, ``side``.
+    *buckets* is the wallet-bucketed frame produced by
+    :func:`compute_wallet_metrics` (one row per (wallet, dt_floored,
+    condition_id, side), wallets contiguous in appearance order) and must
+    contain: ``pnl``, ``notional``, ``condition_id``, ``copyable_pnl``,
+    ``quantity``, ``copyable_qty``, ``side``, ``dt_floored``, ``trade_count``.
+
+    All metrics are computed in a single groupby pass (no per-wallet Python
+    loop).  Row order within a wallet is preserved exactly: the drawdown and
+    bucket-sum reductions depend on it, so no re-sorting is applied.
     """
-    pnl = group["pnl"].to_numpy(dtype=float)
-    total_notional = group["notional"].sum()
-    total_pnl = pnl.sum()
+    df = buckets.copy()
+    g = df.groupby("wallet", sort=False)
 
-    buy_pnl = group.loc[group["side"] == "BUY", "pnl"].sum()
-    buy_quantity = group.loc[group["side"] == "BUY", "quantity"].sum()
+    res = pd.DataFrame({"wallet": df["wallet"].drop_duplicates().to_numpy()}).set_index("wallet")
+    res["num_buckets"] = g.size()
+    res["trade_count"] = g["trade_count"].sum()
+    res["total_notional"] = g["notional"].sum()
+    res["total_pnl"] = g["pnl"].sum()
+    res["copyable_pnl"] = g["copyable_pnl"].sum()
+    res["num_markets"] = g["condition_id"].nunique()
+    res["median_dt"] = g["dt_floored"].median()
 
-    sell_pnl = group.loc[group["side"] == "SELL", "pnl"].sum()
-    sell_quantity = group.loc[group["side"] == "SELL", "quantity"].sum()
-    buy_notional = group.loc[group["side"] == "BUY", "notional"].sum()
-    sell_notional = group.loc[group["side"] == "SELL", "notional"].sum()
+    roi = df["pnl"].to_numpy(dtype=float) / df["notional"].to_numpy(dtype=float)
+    df["_roi"] = roi
+    g = df.groupby("wallet", sort=False)
+    res["median_roi"] = g["_roi"].median()
+    res["average_roi"] = g["_roi"].mean()
 
+    df["_cpnl"] = g["pnl"].cumsum()
+    df["_ccp"] = g["copyable_pnl"].cumsum()
 
-    copyable_qty = group["copyable_qty"].sum()
-    total_copyable_pnl = group["copyable_pnl"].sum()
-    total_qty = group["quantity"].sum()
+    def drawdowns(sub: pd.DataFrame) -> pd.Series:
+        return pd.Series({
+            "max_drawdown": _max_drawdown(sub["_cpnl"].to_numpy()),
+            "max_copyable_drawdown": _max_drawdown(sub["_ccp"].to_numpy()),
+        })
 
-    median_roi = (pnl / group["notional"]).median()
-    average_roi = (pnl / group["notional"]).mean()
+    dd = df.groupby("wallet", sort=False).apply(drawdowns, include_groups=False)
+    res["max_drawdown"] = dd["max_drawdown"]
+    res["max_copyable_drawdown"] = dd["max_copyable_drawdown"]
 
-    buy_copyable_quantity = group.loc[group["side"] == "BUY", "copyable_qty"].sum()
-    buy_copyable_pnl = group.loc[group["side"] == "BUY", "copyable_pnl"].sum()
+    piv = df.pivot_table(
+        index="wallet", columns="side",
+        values=["pnl", "quantity", "notional", "copyable_qty", "copyable_pnl"],
+        aggfunc="sum", sort=False, fill_value=0.0)
 
-    sell_copyable_quantity = group.loc[group["side"] == "SELL", "copyable_qty"].sum()
-    sell_copyable_pnl = group.loc[group["side"] == "SELL", "copyable_pnl"].sum()
-    
-    buy_roi = buy_pnl / buy_quantity if buy_quantity > 0 else float(0)
+    def side_sum(var: str, side: str) -> pd.Series:
+        return piv[(var, side)] if (var, side) in piv.columns else 0.0
 
-    sell_roi = sell_pnl / sell_quantity if sell_quantity > 0 else float(0)
+    res["buy_pnl"] = side_sum("pnl", "BUY")
+    res["buy_quantity"] = side_sum("quantity", "BUY")
+    res["sell_pnl"] = side_sum("pnl", "SELL")
+    res["sell_quantity"] = side_sum("quantity", "SELL")
+    res["buy_notional"] = side_sum("notional", "BUY")
+    res["sell_notional"] = side_sum("notional", "SELL")
+    res["buy_copyable_quantity"] = side_sum("copyable_qty", "BUY")
+    res["buy_copyable_pnl"] = side_sum("copyable_pnl", "BUY")
+    res["sell_copyable_quantity"] = side_sum("copyable_qty", "SELL")
+    res["sell_copyable_pnl"] = side_sum("copyable_pnl", "SELL")
 
-    max_achieved_pnl = 0
-    max_drawdown = 0
-    cum_pnl = np.cumsum(pnl)
-    for x in cum_pnl:
-        if x > max_achieved_pnl:
-            max_achieved_pnl = x
-        if(x < max_achieved_pnl):
-            drawdown = max_achieved_pnl - x
-            if drawdown > max_drawdown:
-                max_drawdown = drawdown
+    res["buy_roi"] = np.where(res["buy_quantity"] > 0, res["buy_pnl"] / res["buy_quantity"], 0.0)
+    res["sell_roi"] = np.where(res["sell_quantity"] > 0, res["sell_pnl"] / res["sell_quantity"], 0.0)
+    res["buy_copyable_notional"] = np.where(
+        res["buy_quantity"] > 0,
+        res["buy_notional"] * (res["buy_copyable_quantity"] / res["buy_quantity"]),
+        float("nan"))
 
-    
-    max_copyable_pnl = 0
-    max_copyable_drawdown = 0
-    cum_copyable_pnl = np.cumsum(group["copyable_pnl"])
-    for x in cum_copyable_pnl:
-        if x > max_copyable_pnl:
-            max_copyable_pnl = x
-        if(x < max_copyable_pnl):
-            drawdown = max_copyable_pnl - x
-            if drawdown > max_copyable_drawdown:
-                max_copyable_drawdown = drawdown
+    df["dt_1h"] = df["dt_floored"].dt.floor("1h")
+    bucket_pnls = df.groupby(["wallet", "dt_1h", "condition_id"], sort=False)["pnl"].sum()
+    total_pnl_s = res["total_pnl"]
 
-    copyable_qty = np.clip(copyable_qty, 0, total_qty)
+    def topn_pct(bp: pd.Series, n: int, ascending: bool) -> pd.Series:
+        s = bp.sort_values(ascending=ascending, kind="stable")
+        top = s.groupby("wallet", sort=False).head(n).groupby("wallet", sort=False).sum()
+        return top / total_pnl_s
 
-    group['dt_1h'] = group['dt_floored'].dt.floor('1h')
+    res["top5_pnl_pct"] = topn_pct(bucket_pnls, 5, False)
+    res["top10_pnl_pct"] = topn_pct(bucket_pnls, 10, False)
+    res["worst5_pnl_pct"] = topn_pct(bucket_pnls, 5, True)
+    res["positive_bucket_share"] = (bucket_pnls > 0).groupby("wallet", sort=False).mean()
 
-    group['dt_1h'] = group['dt_floored'].dt.floor('1h')
-    bucket_pnls = group.groupby(['dt_1h', 'condition_id'], sort=False)["pnl"].sum()
-    market_pnls = group.groupby("condition_id", sort=False)["pnl"].sum()
-
+    market_pnls = df.groupby(["wallet", "condition_id"], sort=False)["pnl"].sum()
+    res["top_market_pnl_pct"] = market_pnls.groupby("wallet", sort=False).max() / total_pnl_s
     abs_market_pnls = market_pnls.abs()
-    abs_market_total = abs_market_pnls.sum()
-    if abs_market_total > 0:
-        market_weights = abs_market_pnls / abs_market_total
-        top_market_abs_pnl_pct = abs_market_pnls.max() / abs_market_total
-        market_pnl_hhi = float(np.square(market_weights).sum())
-    else:
-        top_market_abs_pnl_pct = float("nan")
-        market_pnl_hhi = float("nan")
+    abs_market_total = abs_market_pnls.groupby("wallet", sort=False).sum()
+    nz = abs_market_total > 0
+    res["top_market_abs_pnl_pct"] = np.where(
+        nz, abs_market_pnls.groupby("wallet", sort=False).max() / abs_market_total, float("nan"))
+    res["market_pnl_hhi"] = np.where(
+        nz, ((abs_market_pnls / abs_market_total) ** 2).groupby("wallet", sort=False).sum(),
+        float("nan"))
 
-    positive_bucket_share = float((bucket_pnls > 0).mean()) if len(bucket_pnls) else float("nan")
+    df["_wp"] = df["notional"].to_numpy(dtype=float) * df["pnl"].to_numpy(dtype=float)
+    df["_wp2"] = df["notional"].to_numpy(dtype=float) * df["pnl"].to_numpy(dtype=float) ** 2
+    gw = df.groupby("wallet", sort=False)
+    total_w = gw["notional"].sum()
+    mean_wp = gw["_wp"].sum() / total_w
+    var = np.clip(gw["_wp2"].sum() / total_w - mean_wp ** 2, 0, None)
+    sigma = np.sqrt(var)
+    valid = (gw.size() >= 2) & (total_w > 0) & (res["total_pnl"] > 0)
+    res["pnl_volatility"] = np.where(valid, sigma / np.sqrt(res["total_pnl"]), float("nan"))
 
-    if abs(total_pnl) <= 0:
-        top5_pnl_pct = float("nan")
-        top10_pnl_pct = float("nan")
-        worst5_pnl_pct = float("nan")
-        top_market_pnl_pct = float("nan")
-        median_roi = float("nan")
-        average_roi = float("nan")
-        buy_roi = float("nan")
-        buy_pnl = float("nan")
-        buy_copyable_pnl = float("nan")
-        buy_copyable_quantity = float("nan")
-        sell_copyable_pnl = float("nan")
-        sell_roi = float("nan")
-        sell_copyable_quantity = float("nan")
-    else:
-        # Take top-N hourly market buckets by PnL contribution.
-        top5_pnl = bucket_pnls.sort_values(ascending=False).iloc[:5].sum()
-        top5_pnl_pct = top5_pnl / total_pnl
-        top10_pnl = bucket_pnls.sort_values(ascending=False).iloc[:10].sum()
-        top10_pnl_pct = top10_pnl / total_pnl
-        # Take the worst 5 buckets by PnL (largest negative values)
-        worst5_pnl = bucket_pnls.sort_values(ascending=True).iloc[:5].sum()
-        worst5_pnl_pct = worst5_pnl / total_pnl
+    nz2 = abs(res["total_pnl"]) <= 0
+    for c in ["top5_pnl_pct", "top10_pnl_pct", "worst5_pnl_pct", "top_market_pnl_pct",
+              "median_roi", "average_roi", "buy_roi", "buy_pnl", "buy_copyable_pnl",
+              "buy_copyable_quantity", "sell_copyable_pnl", "sell_roi", "sell_copyable_quantity"]:
+        res.loc[nz2, c] = float("nan")
 
-        top_market_pnl_pct = (
-            market_pnls.max() / total_pnl
-        )
-
-    return pd.Series(
-        {
-            "pnl_volatility": scaled_weighted_pnl_volatility(group),
-            "num_buckets": len(group),
-            "num_markets": group["condition_id"].nunique(),
-            "trade_count": group["trade_count"].sum(),
-            "total_notional": total_notional,
-            "total_pnl": total_pnl,
-            "copyable_pnl": total_copyable_pnl,
-            "top5_pnl_pct": top5_pnl_pct,
-            "top10_pnl_pct": top10_pnl_pct,
-            "worst5_pnl_pct": worst5_pnl_pct,
-            "top_market_pnl_pct": top_market_pnl_pct,
-            "top_market_abs_pnl_pct": top_market_abs_pnl_pct,
-            "market_pnl_hhi": market_pnl_hhi,
-            "positive_bucket_share": positive_bucket_share,
-            "median_roi": median_roi,
-            "median_dt": group["dt_floored"].median(),
-            "average_roi": average_roi,
-            "buy_roi": buy_roi,
-            "buy_pnl": buy_pnl,
-            "buy_notional": buy_notional,
-            "buy_copyable_pnl": buy_copyable_pnl,
-            "buy_copyable_quantity": buy_copyable_quantity,
-            "buy_copyable_notional": buy_notional * (buy_copyable_quantity / buy_quantity) if buy_quantity > 0 else float("nan"),
-            "sell_notional": sell_notional,
-            "sell_copyable_quantity": sell_copyable_quantity,
-            "sell_copyable_pnl": sell_copyable_pnl,
-            "sell_pnl": sell_pnl,
-            "sell_roi": sell_roi,
-            "max_drawdown": max_drawdown,
-            "max_drawdown_to_pnl": max_drawdown / total_pnl if total_pnl > 0 else float("nan"),
-            "max_copyable_drawdown": max_copyable_drawdown,
-            "max_copyable_drawdown_to_copyable_pnl": max_copyable_drawdown / total_copyable_pnl if total_copyable_pnl > 0 else float("nan"),
-        }
-    )
+    res["max_drawdown_to_pnl"] = np.where(
+        res["total_pnl"] > 0, res["max_drawdown"] / res["total_pnl"], float("nan"))
+    res["max_copyable_drawdown_to_copyable_pnl"] = np.where(
+        res["copyable_pnl"] > 0, res["max_copyable_drawdown"] / res["copyable_pnl"], float("nan"))
+    return res.reset_index()
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +198,7 @@ def compute_wallet_metrics(
     1. Floor ``dt`` to *bucket_freq* intervals.
     2. Aggregate into ``(wallet, dt_floored, condition_id)`` buckets, keeping
        only buckets with positive notional.
-    3. Apply :func:`_wallet_metrics_from_buckets` per wallet.
+    3. Compute per-wallet metrics in one vectorized groupby pass.
     4. Compute ``return = total_pnl / total_notional``.
 
     Parameters
@@ -285,11 +271,7 @@ def compute_wallet_metrics(
     if buckets.empty:
         return pd.DataFrame(columns=empty_cols), buckets
 
-    result = (
-        buckets.groupby("wallet", sort=False)
-        .apply(_wallet_metrics_from_buckets, include_groups=False)
-        .reset_index()
-    )
+    result = _wallet_metrics_from_buckets(buckets)
     result["return"] = result["total_pnl"] / result["total_notional"]
     return result, buckets
 

@@ -181,10 +181,17 @@ def candidate_splits_for(
     df_full: pd.DataFrame,
     wallets: Iterable[str],
 ) -> dict[str, pd.DataFrame]:
-    """BUY trades of ``wallets`` split chronologically with train-fitted ``roi_res``."""
+    """BUY trades of ``wallets`` split chronologically with train-fitted ``roi_res``.
+
+    Adds a ``market_close`` column: the last observed trade timestamp per
+    market (any wallet, any side).  ``end_date_iso`` is only a nominal midnight
+    date, while markets actually keep trading into the next day, so capital in
+    a sizing backtest must be released at ``market_close``, not ``end_date_iso``.
+    """
     candidate_trades = df_full[
         df_full["wallet"].isin(wallets) & (df_full["side"] == "BUY")
     ].copy()
+    market_close = df_full.groupby("condition_id")["dt"].max()
     c_train, c_val, c_test = split_data(candidate_trades, method="chronological")
     residual_fit = fit_roi_residualizer(c_train["copyable_roi"], c_train["price"])
     splits: dict[str, pd.DataFrame] = {}
@@ -192,6 +199,7 @@ def candidate_splits_for(
         frame["roi_res"] = residualized_roi(
             frame["copyable_roi"], frame["price"], residual_fit
         )
+        frame["market_close"] = frame["condition_id"].map(market_close)
         splits[label] = frame
     return splits
 
@@ -217,11 +225,21 @@ def attach_position_signal_panel(
     For each wallet filter, attaches the base ``kinds`` (default pos/val x
     own/opp) and, for each tau hour in ``taus_h``, the fresh counterpart of
     every kind in ``fresh_kinds`` (defaults to ``kinds``) with the tau baked
-    into the column name (``sig_fval_opp_6h_flipper``).  The checkpoint index
+    into the column name (``sig_fval_opp_6h_flipper``).      The checkpoint index
     is built once over ``trades``.
+
+    The engine is cached on the ``trades`` object (``_position_signal_engine``)
+    so repeated calls over the same frame reuse it.  The cache is implicitly
+    invalidated by construction: :func:`restrict_trades` always returns a fresh
+    ``.copy()``, which drops the attribute, so any new pipeline run rebuilds the
+    engine.  Invariant: do not mutate ``trades`` in place after the engine is
+    built (the engine holds a reference to it); no pipeline code does.
     """
     frames = {name: frame.copy(deep=True) for name, frame in splits.items()}
-    engine = PositionSignalEngine(trades)
+    engine = getattr(trades, "_position_signal_engine", None)
+    if engine is None:
+        engine = PositionSignalEngine(trades)
+        object.__setattr__(trades, "_position_signal_engine", engine)
     all_kinds = list(kinds or DEFAULT_SIGNAL_KINDS)
     fresh = list(fresh_kinds if fresh_kinds is not None else all_kinds)
     taus = [float(t) for t in (taus_h or ())]

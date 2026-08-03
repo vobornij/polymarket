@@ -2,6 +2,7 @@
 Explore new signal ideas sequentially using the functional stage1 pipeline.
 """
 
+import argparse
 import sys
 from pathlib import Path
 import pandas as pd
@@ -19,20 +20,35 @@ from signal_lab.stage1 import (
     run_strategies,
 )
 from signal_lab.strategies import (
+    BigWinnerMarketCharacterization,
+    CopyCrowdEntryTiming,
+    CopyWalletQualitySignals,
+    FadeReactiveSellFlow,
     GamblerCapitulationSqueeze,
-    FreshOppositeCrowdingFilter
+    FreshOppositeCrowdingFilter,
+    UwlOppContrarian,
 )
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--max-shards", type=int, default=None,
+                        help="Limit how many trade shards are loaded (fast partial run).")
+    args = parser.parse_args()
+
     print("Loading stage-1 data...")
     df_full, _df_train, _df_val, _df_test, wallet_metrics, hold_metrics = (
-        load_stage1_data()
+        load_stage1_data(max_shards=args.max_shards)
     )
 
     # 1. Instantiate the strategies you want to run
     strategies = [
-        GamblerCapitulationSqueeze(),
-        FreshOppositeCrowdingFilter(),
+        CopyCrowdEntryTiming(),
+        FadeReactiveSellFlow(),
+        UwlOppContrarian(),
+        # BigWinnerMarketCharacterization(),
+        # CopyWalletQualitySignals(),
+        # GamblerCapitulationSqueeze(),
+        # FreshOppositeCrowdingFilter(),
         # Add more strategies here, or comment them out!
     ]
 
