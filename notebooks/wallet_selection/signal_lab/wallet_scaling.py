@@ -110,6 +110,84 @@ def wallet_stats(train_daily: pd.DataFrame) -> pd.DataFrame:
     return st
 
 
+def price_scale_fill_sim(
+    signals: pd.DataFrame,
+    tape: pd.DataFrame,
+    scales: tuple[float, ...] = (1.0, 0.98, 0.95, 0.90),
+    window_minutes: float = 5.0,
+) -> pd.DataFrame:
+    """Simulate limit-price copy fills for candidate BUY signals.
+
+    Each candidate copy-wallet BUY at price ``p`` is copied at limit price
+    ``p * scale``.  A scaled order fills only if, within ``(dt, dt + window]``,
+    any trade on the same ``(condition_id, token_id)`` prints at
+    ``price <= limit`` with a **strictly greater** timestamp (``scale == 1.0``
+    is the market-copy baseline: filled immediately at ``p``).
+
+    Fill entry is the limit price, so the recomputed pnl is
+    ``copyable_pnl + copyable_qty * (p - limit)`` (same formula and quantity as
+    the original ``copyable_pnl``); unfilled scaled trades contribute 0.
+
+    ``signals`` needs ``wallet, condition_id, token_id, dt, price,
+    copyable_qty, copyable_pnl``.  ``tape`` needs ``condition_id, token_id,
+    dt, price`` and may contain both sides / all wallets.
+
+    Returns one row per (signal, scale) with ``dt, price, copyable_qty,
+    copyable_pnl, limit_price, filled, pnl``.
+    """
+    sig = signals[signals["copyable_qty"] > 0].copy()
+    if sig.empty:
+        return pd.DataFrame(columns=[
+            "wallet", "condition_id", "token_id", "dt", "price", "copyable_qty",
+            "copyable_pnl", "scale", "limit_price", "filled", "pnl",
+        ])
+    sig["dt_ns"] = pd.to_datetime(sig["dt"], utc=True).astype(np.int64)
+    tape_t = tape.copy()
+    tape_t["dt_ns"] = pd.to_datetime(tape_t["dt"], utc=True).astype(np.int64)
+
+    win_ns = int(window_minutes * 60 * 1_000_000_000)
+    tape_t = tape_t.sort_values(["condition_id", "token_id", "dt_ns"])
+    tape_groups = {
+        key: (g["dt_ns"].to_numpy(), g["price"].to_numpy())
+        for key, g in tape_t.groupby(["condition_id", "token_id"], sort=False)
+    }
+
+    rows = []
+    for key, g in sig.groupby(["condition_id", "token_id"], sort=False):
+        cid, tid = key
+        dt_s = price_s = None
+        if key in tape_groups:
+            dt_s, price_s = tape_groups[key]
+        tau = g["dt_ns"].to_numpy()
+        price = g["price"].to_numpy()
+        cpnl = g["copyable_pnl"].to_numpy()
+        qty = g["copyable_qty"].to_numpy()
+        wallet = g["wallet"].to_numpy()
+        if dt_s is not None:
+            start = np.searchsorted(dt_s, tau, side="right")
+            end = np.searchsorted(dt_s, tau + win_ns, side="right")
+        for i in range(len(g)):
+            win_min = np.inf
+            if dt_s is not None and end[i] > start[i]:
+                win_min = price_s[start[i]:end[i]].min()
+            for scale in scales:
+                limit = price[i] * scale
+                if scale == 1.0:
+                    filled = True
+                    pnl = cpnl[i]
+                else:
+                    filled = win_min <= limit
+                    pnl = cpnl[i] + qty[i] * (price[i] - limit) if filled else 0.0
+                rows.append((
+                    wallet[i], cid, tid, g["dt"].iloc[i], price[i], qty[i],
+                    cpnl[i], scale, limit, filled, pnl,
+                ))
+    return pd.DataFrame(rows, columns=[
+        "wallet", "condition_id", "token_id", "dt", "price", "copyable_qty",
+        "copyable_pnl", "scale", "limit_price", "filled", "pnl",
+    ])
+
+
 def normalize_mean1(alpha: pd.Series) -> pd.Series:
     m = alpha.mean()
     return alpha / m if m > 0 else alpha

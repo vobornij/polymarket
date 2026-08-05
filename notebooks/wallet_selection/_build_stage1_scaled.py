@@ -302,6 +302,82 @@ with open(out_path, "w") as f:
 print(f"Saved stage 1 scaled result -> {out_path.resolve()}")
 """
 
+CELL_PRICE_SCALE_MD = """\
+## Price-scaling fill experiment (exploratory)
+
+Test a limit-price entry idea on a **sample** (~1k test contracts, copy-default wallets):
+copy each candidate copy-wallet BUY at `limit = price * scale` for
+`scale ∈ {1.0, 0.98, 0.95, 0.90}` and give the order a **5-minute window** to fill.
+
+- **Fill rule:** filled iff within `(dt, dt+5min]` any trade on the same
+  `(condition_id, token_id)` prints at `price <= limit` with a strictly greater timestamp.
+- **Fill price:** exactly the limit price, so
+  `pnl = copyable_pnl + copyable_qty * (price - limit)` (same formula/quantity as the
+  original `copyable_pnl`); unfilled trades contribute 0.
+- **Baseline:** `scale = 1.0` is the market-copy (fill immediately at `price`), so it
+  must reproduce `sum(copyable_pnl)` on the sample.
+"""
+
+CELL_PRICE_SCALE_SETUP = """\
+from lib import DEFAULT_TRADES_DIR
+from signal_lab.wallet_scaling import price_scale_fill_sim
+
+rng = np.random.RandomState(42)
+test_markets = np.sort(splits["test"]["condition_id"].unique())
+n_sel = min(1000, len(test_markets))
+sel_markets = rng.choice(test_markets, size=n_sel, replace=False)
+signals = splits["test"][splits["test"]["condition_id"].isin(sel_markets)].copy()
+signals = signals[signals["copyable_qty"] > 0]
+print(f"test markets: {len(test_markets):,}  sampled: {n_sel:,}")
+print(f"candidate BUYs (copyable_qty>0) on sample: {len(signals):,}")
+
+_tape_cols = ["condition_id", "token_id", "dt", "avg_price"]
+tape_parts = []
+for f in sorted(DEFAULT_TRADES_DIR.glob("*.parquet")):
+    tp = pd.read_parquet(f, columns=_tape_cols)
+    tp = tp[tp["condition_id"].isin(sel_markets)]
+    if not tp.empty:
+        tape_parts.append(tp.rename(columns={"avg_price": "price"}))
+tape = (
+    pd.concat(tape_parts, ignore_index=True)
+    if tape_parts
+    else pd.DataFrame(columns=["condition_id", "token_id", "dt", "price"])
+)
+print(f"fill tape rows (sampled contracts, both sides): {len(tape):,}")
+"""
+
+CELL_PRICE_SCALE_RUN = """\
+SCALES = (1.0, 0.98, 0.95, 0.90)
+sim = price_scale_fill_sim(signals, tape, scales=SCALES, window_minutes=5.0)
+base_pnl = float(signals["copyable_pnl"].sum())
+
+summary = (
+    sim.groupby("scale")
+    .agg(signals=("filled", "size"), fills=("filled", "sum"),
+         fill_rate=("filled", "mean"), pnl=("pnl", "sum"))
+    .reset_index()
+)
+summary["pnl_pct_of_market"] = summary["pnl"] / base_pnl * 100 if base_pnl else np.nan
+summary["delta_vs_market"] = summary["pnl"] - base_pnl
+print(f"market-copy pnl (baseline = sum copyable_pnl): {base_pnl:,.2f}")
+summary.round(2)
+"""
+
+CELL_PRICE_SCALE_WALLETS = """\
+pw_pnl = sim.pivot_table(index="wallet", columns="scale", values="pnl", aggfunc="sum")
+pw_fill = sim.pivot_table(index="wallet", columns="scale", values="filled", aggfunc="mean")
+pw = pw_pnl.join(pw_fill.rename(columns={c: f"fill_{c:g}" for c in pw_fill.columns}))
+pw = pw.reindex(pw[1.0].sort_values(ascending=False).index)
+pw.round(1).head(15)
+"""
+
+CELL_PRICE_SCALE_SAVE = """\
+sim.to_csv(OUT_DIR / "price_scale_sim.csv", index=False)
+summary.round(4).to_csv(OUT_DIR / "price_scale_summary.csv", index=False)
+pw.round(2).reset_index().to_csv(OUT_DIR / "price_scale_wallets.csv", index=False)
+print("saved -> signal_lab/price_scale_{sim,summary,wallets}.csv")
+"""
+
 cells = [
     md("""# Stage 1: Per-Wallet Copy Sizing (tier3@2-0)
 
@@ -335,6 +411,11 @@ Copy qty is capped by the reconstructed share-depth ``bucket_avail_copy_qty``.
     code(CELL_CONTRIB),
     md("## Save stage 1 result"),
     code(CELL_SAVE),
+    md(CELL_PRICE_SCALE_MD),
+    code(CELL_PRICE_SCALE_SETUP),
+    code(CELL_PRICE_SCALE_RUN),
+    code(CELL_PRICE_SCALE_WALLETS),
+    code(CELL_PRICE_SCALE_SAVE),
 ]
 
 kernelspec = {
