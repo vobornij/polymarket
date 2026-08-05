@@ -34,6 +34,7 @@ _READ_COLS = [
     "token_id", "outcome", "price", "quantity", "usdc_amount", "position",
     "wallet", "side", "avail_copy_qty", "avail_copy_total_vol",
     "avail_copy_count",
+    "avail_copy_qty_098", "avail_copy_qty_095", "avail_copy_qty_090",
 ]
 
 # Columns needed to rank wallets by training P&L (Phase 1).
@@ -227,11 +228,18 @@ def enrich_and_group_shard(
             avail_copy_qty = ("avail_copy_qty", "max"),
             avail_copy_total_vol = ("avail_copy_total_vol", "sum"),
             avail_copy_count  = ("avail_copy_count", "sum"),
+            avail_copy_qty_098 = ("avail_copy_qty_098", "max"),
+            avail_copy_qty_095 = ("avail_copy_qty_095", "max"),
+            avail_copy_qty_090 = ("avail_copy_qty_090", "max"),
         )
         .reset_index()
     )
 
     grouped["copyable_qty"] = grouped["total_quantity"].clip(upper=grouped["avail_copy_qty"])
+    for code in ("098", "095", "090"):
+        grouped[f"copyable_qty_{code}"] = grouped["total_quantity"].clip(
+            upper=grouped[f"avail_copy_qty_{code}"]
+        )
 
     is_buy = grouped["side"] == "BUY"
     grouped["trade_pnl"] = np.where(

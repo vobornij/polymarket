@@ -19,12 +19,15 @@ TEST_CIDS = [
 
 
 def reference_compute_future_better_price_qty(
-    df: pd.DataFrame, window: pd.Timedelta
+    df: pd.DataFrame, window: pd.Timedelta, factors: tuple[float, ...] = (1.0,)
 ) -> pd.DataFrame:
     """O(n²) reference for compute_future_better_price_qty."""
     df = df.sort_values(["ts", "tx_hash"]).reset_index(drop=True)
+    extra_factors = [f for f in factors if abs(f - 1.0) > 1e-12]
     if df.empty:
         df[["avail_copy_qty", "avail_copy_total_vol", "avail_copy_count"]] = np.nan
+        for f in extra_factors:
+            df[f"avail_copy_qty_{round(f*100):03d}"] = np.nan
         return df
 
     T = df["token_id"].iloc[0]
@@ -40,6 +43,7 @@ def reference_compute_future_better_price_qty(
     result_qty = np.zeros(n, dtype=np.float64)
     result_vol = np.zeros(n, dtype=np.float64)
     result_count = np.zeros(n, dtype=np.float64)
+    result_qty_var = {f"{round(f*100):03d}": np.zeros(n, dtype=np.float64) for f in extra_factors}
 
     for i in range(n):
         is_sell = side[i] == "SELL"
@@ -57,19 +61,42 @@ def reference_compute_future_better_price_qty(
                 not is_token[j] and side[j] == "SELL"
             )
             if is_bit:
-                better = (
+                if (
                     (need_higher and t_price[j] > t_price[i])
                     or (not need_higher and t_price[j] < t_price[i])
-                )
-                if better:
+                ):
                     result_qty[i] += qty[j]
                     result_vol[i] += qty[j] * t_price[j]
                     result_count[i] += 1
             j += 1
 
+        # scaled-factor variants
+        for f in extra_factors:
+            code = f"{round(f*100):03d}"
+            adjusted = price[i] * f if side[i] == "BUY" else price[i] / f
+            adjusted = np.floor(adjusted * 1000.0) / 1000.0
+            thresh = adjusted if is_T else 1.0 - adjusted
+
+            j = i + 1
+            while j < n and ts[j] <= ts[i]:
+                j += 1
+            while j < n and ts[j] <= end:
+                is_bit = (is_token[j] and side[j] == "BUY") or (
+                    not is_token[j] and side[j] == "SELL"
+                )
+                if is_bit:
+                    if (
+                        (need_higher and t_price[j] > thresh)
+                        or (not need_higher and t_price[j] < thresh)
+                    ):
+                        result_qty_var[code][i] += qty[j]
+                j += 1
+
     df["avail_copy_qty"] = result_qty
     df["avail_copy_total_vol"] = result_vol
     df["avail_copy_count"] = result_count
+    for code, arr in result_qty_var.items():
+        df[f"avail_copy_qty_{code}"] = arr
     return df
 
 
@@ -91,13 +118,14 @@ def _load_cid(cid: str) -> pd.DataFrame:
 class TestReferenceImplementation:
 
     def test_agrees_with_main_impl(self):
+        FACTORS = (1.0, 0.98, 0.95, 0.90)
         for cid in TEST_CIDS:
             raw = _load_cid(cid)
             ref = reference_compute_future_better_price_qty(
-                raw, window=pd.Timedelta(seconds=300)
+                raw, window=pd.Timedelta(seconds=300), factors=FACTORS,
             )
             main = compute_future_better_price_qty(
-                raw, window=pd.Timedelta(seconds=300)
+                raw, window=pd.Timedelta(seconds=300), factors=FACTORS,
             )
 
             pq_ = main["avail_copy_qty"].values
@@ -119,6 +147,18 @@ class TestReferenceImplementation:
             assert vol_ok
             assert cnt_ok
             assert cq_ok
+
+# --- scaled-factor variants ---
+            for f in (0.98, 0.95, 0.90):
+                code = f"{round(f*100):03d}"
+                col = f"avail_copy_qty_{code}"
+                p_var = main[col].values
+                r_var = ref[col].values
+                var_ok = np.max(np.abs(p_var - r_var)) < 0.01
+                assert var_ok, f"{code}: max|diff|={np.max(np.abs(p_var - r_var)):.6f}"
+                p_var_cq = np.minimum(main["quantity"].values, p_var)
+                r_var_cq = np.minimum(ref["quantity"].values, r_var)
+                assert np.max(np.abs(p_var_cq - r_var_cq)) < 0.01
 
             # --- stats from both impls ---
             T = raw["token_id"].iloc[0]
