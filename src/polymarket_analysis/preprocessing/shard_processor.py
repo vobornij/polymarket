@@ -30,10 +30,15 @@ import pandas as pd
 
 # Columns read from each raw shard parquet.
 _READ_COLS = [
-    "tx_hash", "log_index", "block_timestamp", "trade_date", "condition_id",
+    "tx_hash", "log_index", "block_timestamp", "condition_id",
     "token_id", "outcome", "price", "quantity", "usdc_amount", "position",
-    "wallet", "side", "avail_copy_qty", "copyable_qty", "avail_copy_total_vol",
+    "wallet", "side", "avail_copy_qty", "avail_copy_total_vol",
     "avail_copy_count",
+]
+
+# Columns needed to rank wallets by training P&L (Phase 1).
+_PHASE1_READ_COLS = [
+    "token_id", "wallet", "side", "quantity", "price", "copyable_qty",
 ]
 
 _GROUP_KEYS = ["tx_hash", "wallet", "side", "token_id"]
@@ -77,7 +82,7 @@ def select_top_wallets_shard(
         ``candidate_wallets``, ``selected_wallets``.
     """
     print(f"Processing shard {file_path.name}...")
-    raw = pd.read_parquet(file_path, columns=_READ_COLS)
+    raw = pd.read_parquet(file_path, columns=_PHASE1_READ_COLS)
     stats: dict = {
         "raw_rows": len(raw),
         "in_range_rows": 0,
@@ -89,9 +94,8 @@ def select_top_wallets_shard(
         return {}, stats
 
     raw["token_id"] = raw["token_id"].astype(str)
-    raw['ts'] = pd.to_datetime(raw['block_timestamp'], utc=True)
     enriched = raw.merge(
-        token_lookup_df,
+        token_lookup_df[["token_id", "final_price", "last_condition_trade_ts"]],
         on="token_id",
         how="inner",
     )
@@ -99,7 +103,6 @@ def select_top_wallets_shard(
     if enriched.empty:
         return {}, stats
 
-    enriched["dt"] = pd.to_datetime(enriched["block_timestamp"], unit="s", utc=True)
     stats["in_range_rows"] = len(enriched)
 
     # Restrict to training period only
@@ -107,22 +110,23 @@ def select_top_wallets_shard(
     if train.empty:
         return {}, stats
 
-    train.loc[:, "trade_pnl"] = np.where(
-        train["side"] == "BUY",
-        train["quantity"] * (train["final_price"] - train["price"]),
-        train["quantity"] * (train["price"] - train["final_price"]),
-    )
-
-    train.loc[:, "copyable_pnl"] = (
-        train['copyable_qty'].clip(lower=0, upper=train['quantity'])
-        * (train["final_price"] - train["price"])
-        * np.where(train["side"] == "BUY", 1, -1)
-    )
-
     if selection_pnl not in {"trade_pnl", "copyable_pnl"}:
         raise ValueError(
             f"Unsupported selection_pnl={selection_pnl!r}; "
             "expected 'trade_pnl' or 'copyable_pnl'."
+        )
+
+    if selection_pnl == "trade_pnl":
+        train.loc[:, "trade_pnl"] = np.where(
+            train["side"] == "BUY",
+            train["quantity"] * (train["final_price"] - train["price"]),
+            train["quantity"] * (train["price"] - train["final_price"]),
+        )
+    else:
+        train.loc[:, "copyable_pnl"] = (
+            train['copyable_qty'].clip(lower=0, upper=train['quantity'])
+            * (train["final_price"] - train["price"])
+            * np.where(train["side"] == "BUY", 1, -1)
         )
 
     pnl_col = selection_pnl
@@ -186,16 +190,17 @@ def enrich_and_group_shard(
         return pd.DataFrame(), {}
 
     raw["token_id"] = raw["token_id"].astype(str)
+
+    # Filter to top wallets early to reduce merge + groupby work.
+    raw = raw[raw["wallet"].isin(top_wallets)]
+    if raw.empty:
+        return pd.DataFrame(), {}
+
     enriched = raw.merge(
         token_lookup_df[["token_id", "token_winner", "final_price", "last_condition_trade_ts"]],
         on="token_id",
         how="inner",
     )
-    if enriched.empty:
-        return pd.DataFrame(), {}
-
-    # Filter to top wallets early to reduce work
-    enriched = enriched[enriched["wallet"].isin(top_wallets)]
     if enriched.empty:
         return pd.DataFrame(), {}
 
@@ -220,7 +225,6 @@ def enrich_and_group_shard(
             final_value_usdc = ("final_value_usdc", "sum"),
             num_fills        = ("log_index",        "count"),
             avail_copy_qty = ("avail_copy_qty", "max"),
-            copyable_qty    = ("copyable_qty",   "sum"),
             avail_copy_total_vol = ("avail_copy_total_vol", "sum"),
             avail_copy_count  = ("avail_copy_count", "sum"),
         )

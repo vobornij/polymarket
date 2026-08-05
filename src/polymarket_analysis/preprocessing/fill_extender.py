@@ -141,13 +141,20 @@ def enrich_shard(f, enriched_dir: Path, seconds: int, token_df: pd.DataFrame) ->
     raw = raw.merge(token_df[["token_id"]], on="token_id", how="inner")
     print(f"{len(raw)} trades after merging with token_df for {f.name}")
 
+    _KEEP_COLS = [
+        "tx_hash", "log_index", "block_timestamp", "condition_id", "token_id",
+        "outcome", "token_winner", "wallet", "side", "price", "quantity",
+        "usdc_amount", "position",
+    ]
+    raw = raw[_KEEP_COLS]
 
     raw['ts'] = pd.to_datetime(raw['block_timestamp'], utc=True, unit='s')
 
-    enriched = raw.groupby('condition_id').apply(
-        lambda df: compute_future_better_price_qty(df, window=pd.Timedelta(seconds=seconds)),
-        include_groups=False
-    ).reset_index()
+    window = pd.Timedelta(seconds=seconds)
+    parts = []
+    for _, g in raw.groupby('condition_id', sort=False):
+        parts.append(compute_future_better_price_qty(g, window=window))
+    enriched = pd.concat(parts, ignore_index=True)
 
     enriched['copyable_qty'] = enriched['quantity'].clip(lower=0, upper=enriched['avail_copy_qty'])
     enriched.to_parquet(enriched_dir / f"enriched_{f.name}", index=False)

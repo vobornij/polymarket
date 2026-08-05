@@ -14,7 +14,7 @@ Schemes (all benchmarked against copy-all alpha=1):
 - uniform-k: alpha_w = k for all (pure leverage, capped by depth).
 
 Cap: qty = clip(alpha_w * copyable_qty, 0, bucket_avail_copy_qty) — the
-reconstructed share-depth cap (see depth_cap.py).
+share-depth cap exported by stage0 as ``avail_copy_qty``.
 
 Outputs: wallet_scaling_sim.csv (val for all configs + test for chosen),
 wallet_scaling_ci.csv (cost sweep + bootstrap CI for chosen designs),
@@ -51,32 +51,25 @@ COST_SEL = 10.0
 LAMBDA_MU = 20.0
 LAMBDA_VAR = 20.0
 KEY_COLS = ["tx_hash", "wallet", "side", "token_id"]
-DEPTH_LOOKUP = Path(__file__).resolve().parents[3] / "data" / "bucket_depth.parquet"
 ALPHA_MAX_GRID = (2.0, 4.0, 8.0)
 TIER_GRID = [(nt, am, amin) for nt in (3, 4, 5) for am in ALPHA_MAX_GRID for amin in (0.0, 0.25)]
 UNIFORM_K_GRID = (0.5, 1.0, 2.0, 4.0)
 
 
-def attach_depth_cap(
-    splits: dict[str, pd.DataFrame],
-    wallets: set[str],
-    lookup: pd.DataFrame | None = None,
-) -> dict[str, pd.DataFrame]:
-    """Join the reconstructed share-depth cap onto each candidate split.
-
-    ``lookup`` may be passed a freshly-built depth lookup (see depth_cap.py);
-    otherwise the prebuilt ``data/bucket_depth.parquet`` is loaded.
+def attach_depth_cap(splits: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
+    """Set the share-depth cap for each candidate split from stage0's
+    per-bucket max copy quantity ``avail_copy_qty``, aliased to
+    ``bucket_avail_copy_qty``.
     """
-    if lookup is None:
-        print("Loading depth lookup...", flush=True)
-        lookup = pd.read_parquet(DEPTH_LOOKUP, columns=KEY_COLS + ["bucket_avail_copy_qty"])
-    lk = lookup[lookup["wallet"].isin(wallets)].copy()
-    lk["bucket_avail_copy_qty"] = lk["bucket_avail_copy_qty"].clip(lower=0.0)
-    print(f"lookup rows (candidate wallets only): {len(lk):,}", flush=True)
     out = {}
     for name, fr in splits.items():
-        fr = fr.merge(lk, on=KEY_COLS, how="left")
-        fr["bucket_avail_copy_qty"] = fr["bucket_avail_copy_qty"].fillna(fr["copyable_qty"])
+        if "avail_copy_qty" not in fr.columns:
+            raise KeyError(
+                f"{name} split is missing 'avail_copy_qty'; stage0 must export "
+                "the per-bucket max copy quantity."
+            )
+        fr = fr.copy()
+        fr["bucket_avail_copy_qty"] = fr["avail_copy_qty"].clip(lower=0.0).fillna(fr["copyable_qty"])
         fr["score1"] = 1.0
         out[name] = fr
     return out
@@ -257,7 +250,7 @@ def main():
 
         print("Building candidate splits...", flush=True)
         splits = candidate_splits_for(df_full, wallets)
-        splits = attach_depth_cap(splits, wallets)
+        splits = attach_depth_cap(splits)
         del df_full, _dt, _dv, _dtest
         if cache_dir:
             cache_dir.mkdir(parents=True, exist_ok=True)

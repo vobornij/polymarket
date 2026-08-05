@@ -43,7 +43,6 @@ def code(source):
 
 CELL_SETUP = """\
 # Setup: imports, paths, constants
-# clear_cache()  # uncomment to force rebuild of data/bucket_depth.parquet
 %load_ext autoreload
 %autoreload 2
 
@@ -58,7 +57,6 @@ import numpy as np
 import pandas as pd
 
 from lib import DEFAULT_TAGS
-from signal_lab.depth_cap import build_lookup, clear_cache
 from signal_lab.filters import COPY_DEFAULT
 from signal_lab.signal_lib import spearman_rho
 from signal_lab.sizing import (
@@ -99,16 +97,10 @@ wallets = set(COPY_DEFAULT(wallet_metrics, hold_metrics))
 print(f"copy_default wallets: {len(wallets)}")
 """
 
-CELL_DEPTH_CAP = """\
-lookup = build_lookup()
-print(f"depth lookup buckets: {len(lookup):,}")
-lookup["bucket_avail_copy_qty"].describe(percentiles=[.5, .9, .99])
-"""
-
 CELL_BUILD_SPLITS = """\
 splits = candidate_splits_for(df_full, wallets)
-splits = attach_depth_cap(splits, wallets, lookup=lookup)
-del df_full, df_train, df_val, df_test, lookup
+splits = attach_depth_cap(splits)
+del df_full, df_train, df_val, df_test
 
 for name in ("train", "val", "test"):
     fr = splits[name]
@@ -393,8 +385,7 @@ Copy qty is capped by the reconstructed share-depth ``bucket_avail_copy_qty``.
     code(CELL_LOAD_DATA),
     md("## Copy universe\n\nCandidate wallets = `COPY_DEFAULT` (copy-default filter)."),
     code(CELL_COPY_UNIVERSE),
-    md("## Reconstruct share-depth cap\n\nLoad the cached `bucket_avail_copy_qty` lookup per (tx_hash, wallet, side, token_id); rebuilt from the enriched shards on first run or after `clear_cache()`."),
-    code(CELL_DEPTH_CAP),
+    md("## Share-depth cap\n\nCap = stage0 Phase 2's per-bucket max copy quantity (`avail_copy_qty`), exported with the processed trades."),
     code(CELL_BUILD_SPLITS),
     md("## Train per-wallet stats\n\nPer-wallet daily pnl (copyable, alpha=1) with mean/std shrinkage -> Sharpe proxy."),
     code(CELL_TRAIN_STATS),
