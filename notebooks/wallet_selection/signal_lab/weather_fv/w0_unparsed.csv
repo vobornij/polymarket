@@ -1,0 +1,551 @@
+condition_id,question,end_date_iso
+0xaf5c8cb35003d61f3c0b3bba707690f93bc10cb9296024112bc89522234bbbe6,Will LA wildfires burn 60-70k acres by Sunday?,2025-01-12T00:00:00Z
+0x79d78aaa7abc25c8863af1268cb1d6ac627a8bcb2554c8e48b5dabbcad439de1,Will LA wildfires burn 50-60k acres by Sunday?,2025-01-12T00:00:00Z
+0x0c001e1bd128c714a2a9e33d25c9e68428c2e24db5dcf4c89582d61567927776,Will LA wildfires burn 40-50k acres by Sunday?,2025-01-12T00:00:00Z
+0x3221b45460d346891f0bd7bfba419c764d9f92cb3219656d061ad3bfbe65eda7,Will LA wildfires burn les than 30k acres by Sunday?,2025-01-12T00:00:00Z
+0x747de681fb499296917e4011970396304a5b24aa792675460fe3e8517f7173d6,Will LA wildfires burn 70-80k acres by Sunday?,2025-01-12T00:00:00Z
+0x4f2beeb045b6c1a1951ccb132bd8387ff3b21fea812a097068f39c6e6e62fce0,Will LA wildfires burn 30-40k acres by Sunday?,2025-01-12T00:00:00Z
+0x3575c7f7f46936f8d1c48140fdbbb5e2297b2741665d1f09cfcffa2f7e695635,Will LA wildfires burn 80k or more acres by Sunday?,2025-01-12T00:00:00Z
+0xdf641a571c6e59e5d89283754e597c761de511af363ab881cc9fed18369c88c8,Will it rain in LA by next Friday?,2025-01-17T00:00:00Z
+0x3d246ca4f2f932241bcd82d1e07cfd326c8b856af83cdb37c0ddb79edc20243c,Will it snow in D.C. on Inauguration day?,2025-01-20T00:00:00Z
+0xec546c6a595053f166b0fa711cb43a5e9943b89c3a872192f177323ed74e399c,Will the highest temperature in NYC 47°F or higher on January 26?,2025-01-26T00:00:00Z
+0x4bfd4d337c9345ba4ed74cbee0ccdfc6ad06c6302d9753b412484885ed830c74,Will the highest temperature in NYC 36°F or below on January 26?,2025-01-26T00:00:00Z
+0x63737d490e6f52083d2de3e617094c2efbdd9a0deb1ba05e38772fd2c6cb76cf,Will all LA wildfires be fully contained before February?,2025-01-31T00:00:00Z
+0x48b89ee1ee4632a1f3e173782e7081121c2c95035be6bcc0f9c3c8a119aae9e6,Arsonists arrested in connection with LA wildfires?,2025-01-31T00:00:00Z
+0xe83c11cb3ac0a2647ffaa6086f628aff1642fb5db6288559b655f65cfc83293c,Will the highest temperature in London between 47-48°F on February 1?,2025-02-01T00:00:00Z
+0x7ab6e97af49f3041afdf42bc7f83fabdeea47857e8e0138cc87e7d7261e42cfb,Will the highest temperature in London between 41-42°F on February 1?,2025-02-01T00:00:00Z
+0x162c70ec5030a64055407a6b4a310a81cb8596cb22a6d6ba6356fc770457cc53,Will the highest temperature in London between 45-46°F on February 1?,2025-02-01T00:00:00Z
+0x596c8c06b0fce5a1cd6b240c31133c1d23ee372c51e07ae61b52f6321ca811d3,Will the highest temperature in London between 39-40°F on February 1?,2025-02-01T00:00:00Z
+0x57e4ec72627751ae5b8d8494e16cda03545d047e49291a0c8f6acea6f4b6f396,Will the highest temperature in London between 43-44°F on February 1?,2025-02-01T00:00:00Z
+0x9501af1168e1fd064e415fe4126f217e03f251d39185501133475b83ac021d20,Will global temperature increase by between 1.20-1.24ºC in February 2025?,2025-02-28T00:00:00Z
+0xe830529963a5e25606a7b4b8d04c8a906ba42e1c1cf2fd3d3638e9de7db4d4cc,Will global temperature increase by between 1.35-1.39ºC in February 2025?,2025-02-28T00:00:00Z
+0xc503e7867b933eb1ecb3d25bd2414cfb3738c318216fbe929da6cc8944fadcd7,Will global temperature increase by less than 1.20ºC in February 2025?,2025-02-28T00:00:00Z
+0x347f02831ef1a270536ecc0ceacda4245ec9b5ebc9f3f1ae860bad4fdaad7615,2025 February hottest on record?,2025-02-28T00:00:00Z
+0x1bfee74a9e930055ff37e24abd89bce68f33817b2c6bbafe906064249954fbb4,Will global temperature increase by more than 1.39ºC in February 2025?,2025-02-28T00:00:00Z
+0x722b18e9603c9b1a6fb1feca5a40817613c72980b3f87c6e6d4c73f1dd2372a8,Will global temperature increase by between 1.25-1.29ºC in February 2025?,2025-02-28T00:00:00Z
+0x469095132de3f9f67b3a6f148f289cfc8375262ce0285383c5f7e983700aa912,Will global temperature increase by between 1.30-1.34ºC in February 2025?,2025-02-28T00:00:00Z
+0x95aebeeaa27416d732a3b3884299a0f49e0ea5e303aea494b031ab8b5ffc5650,Will global temperature increase by between 1.32-1.36ºC in March 2025?,2025-03-31T00:00:00Z
+0xea13132c59f615355257c2c982685775ed223e2da2bc4e6464539c41fe99775d,Will global temperature increase by between 1.27-1.31ºC in March 2025?,2025-03-31T00:00:00Z
+0xf0b9fc21c0d1a0d1db4613b7afdab44348c48866601177fe50d26bc25e9e234c,Will global temperature increase by between 1.37-1.41ºC in March 2025?,2025-03-31T00:00:00Z
+0x189d47cc689f765e1f935496ff970884f50f5c6c6d4923a59730d4fc640f1807,Will global temperature increase by more than 1.41ºC in March 2025?,2025-03-31T00:00:00Z
+0x5e8042ee380c9246f361bd68dbc50876e798d429e20799daffa435b8e089feca,Will global temperature increase by between 1.22-1.26ºC in March 2025?,2025-03-31T00:00:00Z
+0x4b774c74e8672a632d6c12d04620f0c19a3ea10e74871a0239c9392805b70a90,2025 March hottest on record?,2025-03-31T00:00:00Z
+0x433ca79a20d282515085571e802680423b0131ff8dc84ee4a4d83ebc0cec0ed1,Will global temperature increase by less than 1.22ºC in March 2025?,2025-03-31T00:00:00Z
+0xb2224e771b0148f4670919b4d4e29f574c378b145d3996721e2f381ad405091b,Will global temperature increase by more than 1.17ºC in April 2025?,2025-04-30T00:00:00Z
+0x7e5c678e76679c1d6c34d8f621b21fed7deaa7d09259ffd2e7cc93b64e6158a4,Will global temperature increase by more than 1.41ºC in April 2025?,2025-04-30T00:00:00Z
+0x794cc09686ad0514db44128c1a799e0baf901b315feb4e1f6a2df899e60d30e2,Will global temperature increase by between 1.22-1.26ºC in April 2025?,2025-04-30T00:00:00Z
+0x92a1a8699c10e80d21b4906c485b8df55c541ce7eb5eba07e8f79e20a86d44db,Will global temperature increase by between 1.32-1.36ºC in April 2025?,2025-04-30T00:00:00Z
+0x878d5343b628e1044cc4d1a29ab793d828accbafc6bf535468d49ba02e3a85d5,Will global temperature increase by less than 1.08ºC in April 2025?,2025-04-30T00:00:00Z
+0xf1786b52d541bcafed06186aee2dfde04a041d9115a319572548a8696f732d78,Earthquake 7.0 or above in April?,2025-04-30T00:00:00Z
+0xf904c9f6ecae72a847f164f750ceec6b0ba6c98e8fc28837feb09119e3e2eada,2025 April hottest on record?,2025-04-30T00:00:00Z
+0x21e6b634e10eb7144980f50915338dbe1fa2358a6ca86218b3bb31ac8ea95b48,Will global temperature increase by less than 1.22ºC in April 2025?,2025-04-30T00:00:00Z
+0x01f23c17eb2f18ba55efff3ee611cb6f2a11eeeee397fe6babafdd92d692c91f,Will global temperature increase by between 1.08-1.12ºC in April 2025?,2025-04-30T00:00:00Z
+0x60d7b4c560fc40b439ed40bf9fcb1f3d6ca4afe7b9b6dbe078712fc6d6ec3fdf,Will global temperature increase by between 1.37-1.41ºC in April 2025?,2025-04-30T00:00:00Z
+0x6504cb61869aacb7077f32f604ac3439f25eaabc8b469fa2df692066b65ffafb,Will global temperature increase by between 1.27-1.31ºC in April 2025?,2025-04-30T00:00:00Z
+0x432e999b294ef21face82e32d86fd30c1d75b3a5050c5c5f55007a7c70aeb4e4,Will global temperature increase by between 1.13-1.17ºC in April 2025?,2025-04-30T00:00:00Z
+0x11d48a90df559cda06d98c78d55ba3f9faaa71c7db8d630ffb7dacaef786cb02,Will the highest temperature in NYC be be tween 70-71°F on May 4?,2025-05-04T00:00:00Z
+0xb4179cf9c6033e37ff1ac949509ecb8f6f0bb2311ef0867058e9d9b2b578b188,archWill the highest temperature in New York City be 49°F or below on May 22?,2025-05-22T00:00:00Z
+0x838b0000b4e070ebf2a968e9c62f65ffb255266260ae1a899c9747f4dcf9e679,archWill the highest temperature in New York City be between 52–53°F on May 22?,2025-05-22T00:00:00Z
+0x44a871e071f69fd678a140ce380c89f1494adc44a76370c2a4e22ca336a2a87d,archWill the highest temperature in New York City be between 50–51°F on May 22?,2025-05-22T00:00:00Z
+0xaf2c2d77aee2a6adcb972d67669211d02b424f8ea8af634a74cb04e913a5285f,Will global temperature increase by more than 1.24ºC in May 2025?,2025-05-31T00:00:00Z
+0xf72b6271669ca741d6b421ab4993a62037553883cc5c3bbb0d25b1c85b3a08fb,2025 May hottest on record?,2025-05-31T00:00:00Z
+0xda5c919b74e2c6f5629ff47738bc4bc1ae45096719faafb5b2720ba293df00d7,Will global temperature increase by between 1.05-1.09ºC in May 2025?,2025-05-31T00:00:00Z
+0x9862c739820dd7705d6dd9779c0d9447112a1ca0c2678fa11fe819e7c05d9dc6,Earthquake 7.0 or above in May?,2025-05-31T00:00:00Z
+0x05ed3eb3558c3c565218ab47c374a0a8d8e37e42398d6077aa6fe17b9cc3bbb4,Will global temperature increase by between 1.15-1.19ºC in May 2025?,2025-05-31T00:00:00Z
+0x69722a3bd3cb974ff0a824c5db3a6e56131958ddda0e2241a17598766299eaa2,Will global temperature increase by between 1.20-1.24ºC in May 2025?,2025-05-31T00:00:00Z
+0x686fb9aba46c4d33c53ad7c951a32b8b655c3be13a7da5ffa2abc2e433024cdd,Will global temperature increase by less than 1.05ºC in May 2025?,2025-05-31T00:00:00Z
+0x60338412e8b1477bcbddf19bdd0bd8a274a2b1096c9b4e24fbf82509ea2f8df4,Will global temperature increase by between 1.10-1.14ºC in May 2025?,2025-05-31T00:00:00Z
+0xc611795622cf81d4230b2682e97950480a296ac12a5ba49b263d0f76a28875e5,archWill the highest temperature in London be between 87-88°F on June 21?,2025-06-21T00:00:00Z
+0xc90d08732e03e4b0d39f4490af8ab2af2128db52ef5adb9bc45839697915884f,archWill the highest temperature in London be between 89-90°F on June 21?,2025-06-21T00:00:00Z
+0x058b5d77a7c605ad9b7fe0f2085f13d9b83f04900fe0a3e7f1ba189dd6f14319,archWill the highest temperature in London be 86°F or below on June 21?,2025-06-21T00:00:00Z
+0x9e998b6cf62315fe13fd80e8a57c3b1bb9c7affcdada886b44efdcfd28c4e4b0,2025 June hottest on record?,2025-06-30T00:00:00Z
+0x2089d089722253ed11c7314cc94325b12c7198cbec542e3e88daf088ce9425eb,Will a hurricane make landfall in the US in June?,2025-06-30T00:00:00Z
+0xefae99718c85b79809ba87c02d60ebd97fc6727f2f0f1d07350ee4739139ad4d,Megaquake in June?,2025-07-01T00:00:00Z
+0x93317bbd26c133d3a28698c706fa051c8adcf5691b7179c861175a03a986b843,2025 July hottest on record?,2025-07-31T00:00:00Z
+0xc63cfa15f9f29b13f31101f44973abc4276999abc6aa018a96cc0309f1cf47c9,Megaquake before August?,2025-07-31T00:00:00Z
+0x2d1262c631910a24fb6bd0d561cf38688ef001c89c4b7aa374b9d5f1ff4a1367,Will a hurricane make landfall in the US before August?,2025-07-31T00:00:00Z
+0x8bbf44a34427e7798345c80fd5d6569681874f94b41a8a15319b831b9cfb791d,archWill the highest temperature in London be between 80-81°F on August 13?,2025-08-13T00:00:00Z
+0xf9d41fa09639ee77a4d2624dafeb08aa9156f6c83fcb70d9d374049ed0cf8d85,archWill the highest temperature in London be between 86-87°F on August 13?,2025-08-13T00:00:00Z
+0x74a217276f80c8cce495c95524d6543c8297a1b42a4c72fccdca689ba736ef57,archWill the highest temperature in London be 77°F or below on August 13?,2025-08-13T00:00:00Z
+0x19f591d6c562f730d72d926bfb2777a983595dc2a49b2b5d1390fd10628504c5,archWill the highest temperature in London be 88°F or higher on August 13?,2025-08-13T00:00:00Z
+0x0f4ae3c6bf4ea81288af43c2d5b92173790f3556b940ad73848d7713f520bb21,archWill the highest temperature in London be between 84-85°F on August 13?,2025-08-13T00:00:00Z
+0x11f48d56e3d45cc193d7361c712c89b664f6261c3e385eefa85e5d576c5556c6,archWill the highest temperature in London be between 82-83°F on August 13?,2025-08-13T00:00:00Z
+0x48b9dee955a249cc024da2178596a41ca766495f7846da8467776fd37c769c15,archWill the highest temperature in London be between 78-79°F on August 13?,2025-08-13T00:00:00Z
+0xa50b893b16556d0e79def2d1a500af6da9e8d22431f98c8c91e689ff4d9644fa,Megaquake by August 31?,2025-08-31T00:00:00Z
+0xf50936eab945ef9e41c614333ef3842690d03e4e387e5288daf70f16605a9a78,2025 August second hottest on record?,2025-08-31T00:00:00Z
+0xc4aaac83f8ba186bf464c350648ed8a3aba1bcfc0fedfa3158260a08ac8b1645,Will a hurricane make landfall in the US by August 31?,2025-08-31T00:00:00Z
+0x6ce1ea150658f18f9abedea2d81ae98412ab9632166154608a1dedc5370ecb95,Will a hurricane form by August 31?,2025-08-31T00:00:00Z
+0x7214ecfdc0d4e45a3b1e2903e19df196851867c0793f8b4b1f25f5f921679835,2025 August hottest on record?,2025-08-31T00:00:00Z
+0x7601b8e8c597583fb42c42792ac23b3e4ca3acf5ecd85bfba87d7a3e276c9d94,Megaquake by August 31?,2025-08-31T00:00:00Z
+0x504c233d17a7d1e1797354180db6c5692695c5d1e20f26108dd381eb15dab918,2025 August third hottest on record?,2025-08-31T00:00:00Z
+0xcda723d8cbd9d75ec4e9e34fb33e7fbe4ec918c440016c5310bb075cef1802c9,Will a hurricane make landfall in the US by September 30?,2025-09-30T00:00:00Z
+0x34fd49432062d39303523d21d5aec3137e31dea444621ef3184356dd01823569,Will a hurricane form by September 30?,2025-09-30T00:00:00Z
+0x551e05a413e1580ed9e641f962f573daa738ae6f0629a10d7f04cb3ffe661b91,Megaquake by September 30?,2025-09-30T00:00:00Z
+0xd7b3d8208fa984f488b6b47d2c9f2a2020ee1f5d4bf3542ca3f48d78c2a1e380,Megaquake by October 31?,2025-10-31T00:00:00Z
+0x60660c1cf3125eb337f0587d5ceeb8e993f9edf4c4ea49f9316e650da7073120,Will a hurricane make landfall in the US by October 31?,2025-10-31T00:00:00Z
+0xcdf6e3ddd5bec489352a083fb8b99c702ff3dc22f489e61bdd646b45af8ad4e7,Megaquake by November 30?,2025-11-30T00:00:00Z
+0x24179919d36af05a5b7c4bd17057a59087dde6d332cbd5d268aa92e4369d08f5,Cat 3+ hurricane hits Miami in 2025?,2025-11-30T00:00:00Z
+0x6e38b18f06fde61891aab9f49bceae7f8dca4057bb7786ce6881748e61e58e07,Will a cat 5 hurricane make US landfall during Hurricane Season 2025?,2025-11-30T00:00:00Z
+0xa3f5ce12344c79c7bb3f01e7f026a8fe6d42d8891a2032cf3475467efd82d701,Will the highest temperature in Miami be 77–78°F on December 4?,2025-12-04T00:00:00Z
+0xb6a26b37a027cf157c613c26a9f2803d344b380e03c63a083d05046a4c617739,Will the highest temperature in Denver be 38–39°F on December 4?,2025-12-04T00:00:00Z
+0xb7b1169a5643cddd159ca92cb5eb0d4301b07e4705f72a3ff41020e3a2ab29c0,Will the highest temperature in Phoenix be 72–73°F on December 4?,2025-12-04T00:00:00Z
+0xacf937c70551c40506dee6a9c3a5d29a205b1e8b5627e9d37c476db33966452e,Will the highest temperature in Dallas be 61–62°F on December 4?,2025-12-04T00:00:00Z
+0xb1f67e5e9c6fa57f15d51a2b7ba07e710960f392eb4d5abe36196d2ed3b8d108,Will the highest temperature in Dallas be 57–58°F on December 4?,2025-12-04T00:00:00Z
+0x8059ccd670ccde79323a5fbec13d92332afca405eb990b64c874ec56a3b65470,Will the highest temperature in Chicago be 33–34°F on December 4?,2025-12-04T00:00:00Z
+0x95e4b9906fa6b9de2692f7dafe35e6d968bce25c1a5e02d09b8534db1d5a77a1,Will the highest temperature in Denver be 40–41°F on December 4?,2025-12-04T00:00:00Z
+0x8c13b36262046e625969a2c849111cb951665583c2fdb1c8b9683984a926331f,Will the highest temperature in Los Angeles be 72–73°F on December 4?,2025-12-04T00:00:00Z
+0xe10c6222f4f631bd7780e79e18ef1bb26d29844818eecde5da9b92732c091cb8,Will the highest temperature in Chicago be 25–26°F on December 4?,2025-12-04T00:00:00Z
+0xee5f63533e7c7ccf912a0e058a6c30bbeaf1b3fe694f2cf6982d088583318663,Will the highest temperature in Dallas be 55–56°F on December 4?,2025-12-04T00:00:00Z
+0xf2f9c9595eba37a7d09e96bec27d6cdb398ca7e391010e74a8804c0be5aa4b44,Will the highest temperature in Denver be 44–45°F on December 4?,2025-12-04T00:00:00Z
+0xcab9e42f49e784574734629f517b056dbbf66d02affd2abf8c99d4d78f3484ad,Will the highest temperature in Phoenix be 74–75°F on December 4?,2025-12-04T00:00:00Z
+0xbee71d05caa334b26c7053a214c74355fc6737f2afeb6797a190a60072b2a92e,Will the highest temperature in Dallas be 59–60°F on December 4?,2025-12-04T00:00:00Z
+0xda899649fe9855d91e2a4e9382866aeeb6a6ff0bc53e49f621201e9a314b07af,Will the highest temperature in Chicago be 29–30°F on December 4?,2025-12-04T00:00:00Z
+0x25c7195fc373db71c9699bddaa544d22081705bf8b80551954b4d5d70a87c83d,Will the highest temperature in Dallas be 63–64°F on December 4?,2025-12-04T00:00:00Z
+0x2519d7dfe12bf30091183eb90df4d2194c5b218b95d47f6fcfee64eb00c7e865,Will the highest temperature in Los Angeles be 66–67°F on December 4?,2025-12-04T00:00:00Z
+0x0e17ed1d0a5e1d9baa3c80f09ad16b39ea3d1a915decfaea028e982da6a5eae9,Will the highest temperature in Chicago be 31–32°F on December 4?,2025-12-04T00:00:00Z
+0x06d4be60010081f75a24324a6afded2f2b809083030a95544810cd9ebde7586c,Will the highest temperature in Denver be 36–37°F on December 4?,2025-12-04T00:00:00Z
+0x61e5aa5a24fa16f85b8100913757cd59005b65521725bb66c25a7e6c3e96ef08,Will the highest temperature in Miami be 79–80°F on December 4?,2025-12-04T00:00:00Z
+0x6cd43e5339d6f82282a2756e886454ebdbf816608202f4af3205130e9a145c45,Will the highest temperature in Phoenix be 66–67°F on December 4?,2025-12-04T00:00:00Z
+0x77f1aa3c0629a06954135570abfec08407c5a8e2f7618fb3ef7282ae6c0ff7a6,Will the highest temperature in Miami be 75–76°F on December 4?,2025-12-04T00:00:00Z
+0x6fbf9be4f93dce1b7bd5bde0a1f3c5c4532c85c2a5996228d5f74fd72b9434d5,Will the highest temperature in Los Angeles be 70–71°F on December 4?,2025-12-04T00:00:00Z
+0x400064fbf9653b0a3736f8b946a59d65660e3328807511e7c23bfa3ad645adec,Will the highest temperature in Miami be 81–82°F on December 4?,2025-12-04T00:00:00Z
+0x3f33ba3976703c8d6f9e7fe08f4375a8dfc8250835b66528da7b343e33a0a3b1,Will the highest temperature in Los Angeles be 64–65°F on December 4?,2025-12-04T00:00:00Z
+0x415f9d960654b9af2955125a2d1082bcb71404b266d165135b69bb60d70b4577,Will the highest temperature in Phoenix be 70–71°F on December 4?,2025-12-04T00:00:00Z
+0x41b3fc0ece8b59b2f2a923eb95113acb24dbdcf85206cf3350aebef6f5a32591,Will the highest temperature in Los Angeles be 68–69°F on December 4?,2025-12-04T00:00:00Z
+0x43d5afa865eb1c40f154ebc15b54b66e0a053e0f850bcd3d706677c89aaa11e0,Will the highest temperature in Chicago be 27–28°F on December 4?,2025-12-04T00:00:00Z
+0x59e558c5b6638428601fbdfba248120e6be265d497028cf16f05f8d5a148db11,Will the highest temperature in Denver be 42–43°F on December 4?,2025-12-04T00:00:00Z
+0x4f0343de30228bd2d0bb81c59180a185984c341f82df49933168b92a0110cdc4,Will the highest temperature in Phoenix be 68–69°F on December 4?,2025-12-04T00:00:00Z
+0x4efeafae6e4b5c9069853dd61ec14bc874384e2e835a348641c6327273e65dd4,Will the highest temperature in Miami be 83–84°F on December 4?,2025-12-04T00:00:00Z
+0xa4e849d09bb349fc551a94aad2cd11dc2f4d47e90956cb841cef4ccac7a24ac7,Will the highest temperature in Miami be 79–80°F on December 5?,2025-12-05T00:00:00Z
+0x9ef41befd35d6b266975543646e79126a0e2660d1e9af2c116e08e36e4930134,Will the highest temperature in Dallas be 57–58°F on December 5?,2025-12-05T00:00:00Z
+0xa1717f18367a7d391d575f933d7c6bc4b919586c1076a58d28db5e98f8040473,Will the highest temperature in Los Angeles be 72–73°F on December 5?,2025-12-05T00:00:00Z
+0xa0a348dce787a7d8a645dce9f8ef9b84dd97826d0c43e50b129fd5ebb57c808e,Will the highest temperature in Miami be 75–76°F on December 5?,2025-12-05T00:00:00Z
+0xb10f5e4c4398efba8ac1f97e93012860851cc8af3e9ad2958ff8faef77e7bfd4,Will the highest temperature in Seattle be 54 °F or higher on December 5?,2025-12-05T00:00:00Z
+0xaf70c21750c0debcc2a5f4a071f9ca001b57483f1e8d86d215dba1c4c116bc1c,Will the highest temperature in Denver be 38–39°F on December 5?,2025-12-05T00:00:00Z
+0xb2c4835293c94f1668c809c309a49712f41da233e3e7a552d2b8e89fdf9982d5,Will the highest temperature in Seattle be between 52–53 °F on December 5?,2025-12-05T00:00:00Z
+0x81eb0603cc8d82fea6049b40d0a12869c871f21ba23b06bc4728ce08e07ac1b0,Will the highest temperature in Chicago be 31–32°F on December 5?,2025-12-05T00:00:00Z
+0x8295b31dbb9fe2cd04c63e7b19e6a5642f79647fc1eb0da5376e422d72c3cef4,Will the highest temperature in Dallas be 59–60°F on December 5?,2025-12-05T00:00:00Z
+0x978d8032fc1a2e462e96600e6f6ee641e56afaeea8e62c1740c0ce91bb9cb63d,Will the highest temperature in Chicago be 27–28°F on December 5?,2025-12-05T00:00:00Z
+0x9714d0e545264ab98745fdbb23174dd299e222d8991fa13d1fb81a4465a6b204,Will the highest temperature in Denver be 36–37°F on December 5?,2025-12-05T00:00:00Z
+0xec3671216bca569a53d78f878a6f66cbcc7fb245894ef42949637e261a074639,Will the highest temperature in Denver be 40–41°F on December 5?,2025-12-05T00:00:00Z
+0xfe2e9f74c99910b52a8df9f32a60c6945dcb4daac9611f6cb8cad9a8cff7b83f,Will the highest temperature in Seattle be 43 °F or below on December 5?,2025-12-05T00:00:00Z
+0xfe259fe92c628b63e1a9812ce9b2ab4db2b3566243c0b453b799c83f76ba0ec3,Will the highest temperature in Los Angeles be 66–67°F on December 5?,2025-12-05T00:00:00Z
+0xfd2d509c8433cf6aa12a941b03fb38a0ed3442c0d1fb3be963b061908767d381,Will the highest temperature in Seattle be between 48–49 °F on December 5?,2025-12-05T00:00:00Z
+0xf766ad53460e2db49e9a407998fbe611a0e6ff0573bc8e1dd010bdd6b5512ea6,Will the highest temperature in Dallas be 61–62°F on December 5?,2025-12-05T00:00:00Z
+0xc1014b74b7069480194f099ccb937c62a9819c38c73af15ae9cd9b24ab46eb4d,Will the highest temperature in Miami be 81–82°F on December 5?,2025-12-05T00:00:00Z
+0xdb1e71364d1e76c1682588175c6fa6236bee92132960247a127455ab6b0a7318,Will the highest temperature in Phoenix be 66–67°F on December 5?,2025-12-05T00:00:00Z
+0xd10ed5e8a720ad1a2d1aba6b867ce658685c9465635f21d7ec044160b13a5fd1,Will the highest temperature in Denver be 42–43°F on December 5?,2025-12-05T00:00:00Z
+0xd79448ccddfd66c50fb486eb8590e6a295ff41830c53fefec56ff5804fc8abe6,Will the highest temperature in Phoenix be 68–69°F on December 5?,2025-12-05T00:00:00Z
+0x2d009ba7a2138ceda3229e606d7f7c9bbb11600873bd229690808b333bc1d923,Will the highest temperature in Chicago be 25–26°F on December 5?,2025-12-05T00:00:00Z
+0x245a4c93117c5dd8766cd2b3c5586c0ca8b40798bbc83495c25a96427511b301,Will the highest temperature in Seattle be between 44–45 °F on December 5?,2025-12-05T00:00:00Z
+0x2838fb6daafd7236cce8471946cfa4b7a36d062cf5531d70e225c6a48f6def79,Will the highest temperature in Chicago be 33–34°F on December 5?,2025-12-05T00:00:00Z
+0x3b7743254d191d35edf2e28b1240354c953c40f4ff3b3117d9952836aa584161,Will the highest temperature in Phoenix be 72–73°F on December 5?,2025-12-05T00:00:00Z
+0x01251bfba65de0051a3f8c7189c832116c5181c6dc8bafda8a0d74cc70bfc5d7,Will the highest temperature in Chicago be 29–30°F on December 5?,2025-12-05T00:00:00Z
+0x1a6e229f2495cabf466c0a709094485f847ee47861a48b81dbfc592090f9de84,Will the highest temperature in Seattle be between 46–47 °F on December 5?,2025-12-05T00:00:00Z
+0x61ec184c78110ea2fa2275bd5beb789fa342189b8f9f6cf84afe3f7043302b13,Will the highest temperature in Dallas be 63–64°F on December 5?,2025-12-05T00:00:00Z
+0x687e2f81902e6bcf6a3ecd9f0072715aaf43da078a168f772f8fc384f7bc1db5,Will the highest temperature in Los Angeles be 70–71°F on December 5?,2025-12-05T00:00:00Z
+0x7c0d69c422d8722cb4552bab891562510e79bdd0bc160ca9f2f87ef6768b078b,Will the highest temperature in Dallas be 55–56°F on December 5?,2025-12-05T00:00:00Z
+0x798e2253f477b36b845e63a63975fc11fd16d297e7cadd16e560616f4da3fea2,Will the highest temperature in Phoenix be 70–71°F on December 5?,2025-12-05T00:00:00Z
+0x75e3e5104ad54886f41cff418602e3c02a1a8359c67ae46cf839b022242a759d,Will the highest temperature in Seattle be between 50–51 °F on December 5?,2025-12-05T00:00:00Z
+0x4429fa5340f4e8d6696ce549803744069fedb0251b36a9b963d2097f7065162f,Will the highest temperature in Miami be 77–78°F on December 5?,2025-12-05T00:00:00Z
+0x44cd5b10bd0452010ae688b2a72afff8d7b0abe045706960d43585a1664d0b20,Will the highest temperature in Los Angeles be 68–69°F on December 5?,2025-12-05T00:00:00Z
+0x5ae8a5165b924fc3879cde35c0efffbd9a5edfb3bf887f92b754ae124b676414,Will the highest temperature in Los Angeles be 64–65°F on December 5?,2025-12-05T00:00:00Z
+0x5b9040784a20b2f3272e44fee6e9e5c75bbf0204f8a69874f7d3666a93310ef0,Will the highest temperature in Phoenix be 74–75°F on December 5?,2025-12-05T00:00:00Z
+0x5c8764ace056f26af71b4e96c500cae56b61d7bc395ac9af47d92a0be055f905,Will the highest temperature in Miami be 83–84°F on December 5?,2025-12-05T00:00:00Z
+0x57832def2c7bf8c185ccb0d26b589be538ef74397ca64daeedb61ea88469f955,Will the highest temperature in Denver be 44–45°F on December 5?,2025-12-05T00:00:00Z
+0xa9f6162c03aa42288a489d5b784f77b5e84346cddf5b1cf78df9fb7ed28e6525,Will the highest temperature in Seoul be 5 °C on December 6?,2025-12-06T00:00:00Z
+0xa2c356bea0fedf0520ad19ec6b98f423b3f40a0646c51a2d43eb10c203082da1,Will the highest temperature in Dallas be between 55–56 °F on December 6?,2025-12-06T00:00:00Z
+0xa262d74fffb37631018951e2cbed351558f39420d70774114704987db7cc4a64,Will the highest temperature in Dallas be between 61–62 °F on December 6?,2025-12-06T00:00:00Z
+0xb7c364b95809309946ab1efc26bdc6c9320e9254a1cbe573bcdcdde506d17842,Will the highest temperature in Seoul be 8 °C on December 6?,2025-12-06T00:00:00Z
+0xb5b4fb9f06ddab98dfb6822a3d0f46e20a37201fb1a9d22b1252ab86af9b1d5d,Will the highest temperature in Toronto be -1 °C or below on December 6?,2025-12-06T00:00:00Z
+0xb268b9e14c66aa97ac9904db053f5f6d83698e8fee7de7bff06a5ad40c498677,Will the highest temperature in Seattle be 58 °F or higher on December 6?,2025-12-06T00:00:00Z
+0x8a1145c7119353068609ba2e1bf9dc94ac2badf4fe10e74fe54a336cf00ea2b0,Will the highest temperature in Toronto be 0 °C on December 6?,2025-12-06T00:00:00Z
+0x8ad0f4f515a89260f67afb9637ff9bb11873263ddd6d28cc960ec2f1b204d3a4,Will the highest temperature in Dallas be 65 °F or higher on December 6?,2025-12-06T00:00:00Z
+0x7eba38ea79c06629c6314fe96bdcf15926da31bb4f6dc9b0fea1e6b4cf50fd18,Will the highest temperature in Atlanta be between 45–46 °F on December 6?,2025-12-06T00:00:00Z
+0x9b48e31095a21cfba3079b0a661ff818bbb174a012e1101fb6e5e4d319b2d927,Will the highest temperature in Dallas be between 57–58 °F on December 6?,2025-12-06T00:00:00Z
+0xe83573b219007e0c1c08923de618965551450890e49d1ab951dc01faf28b111a,Will the highest temperature in Toronto be 4 °C on December 6?,2025-12-06T00:00:00Z
+0xca17b89d617b57ef629d08911f21d0e494097e1ec29f5010482cb6ef41596b9d,Will the highest temperature in Seattle be between 52–53 °F on December 6?,2025-12-06T00:00:00Z
+0xcdb75cf77efd90be9b597cbdbbd2dab7eb661e6e90aa5811d9ae75e8954e9911,Will the highest temperature in Atlanta be between 53–54 °F on December 6?,2025-12-06T00:00:00Z
+0xcfa8e2f246f39b3c0f93ae5d95e9b825ac513307f5def1e15eec3908ab072de4,Will the highest temperature in Seoul be 3 °C or below on December 6?,2025-12-06T00:00:00Z
+0xc60d84960bf1909eb4f5d61f94b15a4949d0ae9bf682c1a9cf0b17954b011ca3,Will the highest temperature in Buenos Aires be 26 °C or below on December 6?,2025-12-06T00:00:00Z
+0xc4906f277f8b9881c6fa5857621a091029e1f64efeb6bcdbf5ecdd2b84d75403,Will the highest temperature in Toronto be 1 °C on December 6?,2025-12-06T00:00:00Z
+0xd9ba959028362f9c14139493d164732e149f4c1137ee8028b1d88a51d9673c63,Will the highest temperature in Atlanta be between 47–48 °F on December 6?,2025-12-06T00:00:00Z
+0x27968e7c085cf9cfeec0f05d60f337155955f02953268cdf0b0f14f07222c7bb,Will the highest temperature in Toronto be 3 °C on December 6?,2025-12-06T00:00:00Z
+0x25fd3cde861cb15ddba96c837ef840a1b0d357d9f5246b0e915c31149640a032,Will the highest temperature in Buenos Aires be 32 °C or higher on December 6?,2025-12-06T00:00:00Z
+0x250b5f16568372d95438199bdf871a2869e7fca4f4262de0a7edb028d3133453,Will the highest temperature in Buenos Aires be 27 °C on December 6?,2025-12-06T00:00:00Z
+0x39f31412e26120e93d008b86ea3d9e66e4e466b9d6f468bdc1dce479fd385f94,Will the highest temperature in Buenos Aires be 30 °C on December 6?,2025-12-06T00:00:00Z
+0x34149d1789db595e395eca296ccd45e72b43fd2d162406c26b7d1cce50ef07ae,Will the highest temperature in Seattle be between 50–51 °F on December 6?,2025-12-06T00:00:00Z
+0x3146f00e13fb10420b6343602474d3ea532cdc813dd356cc9a709448ba17874d,Will the highest temperature in Seattle be 47 °F or below on December 6?,2025-12-06T00:00:00Z
+0x3474b8cc05a6f797de7a8bcbd2073721cdf28e80830a0bbdc69dd7c807f7a4c6,Will the highest temperature in Dallas be between 63–64 °F on December 6?,2025-12-06T00:00:00Z
+0x090dc990cc0e537721b94b7ae248a5a28e7fc64039d114e5694ef9322350b0a3,Will the highest temperature in Atlanta be 44 °F or below on December 6?,2025-12-06T00:00:00Z
+0x00141f9edbeeed9bb7e8a2864238966d656f70815c3a8b9ecda3054dd9cc24a6,Will the highest temperature in Buenos Aires be 28 °C on December 6?,2025-12-06T00:00:00Z
+0x1076893ea76bcd1fdc5de35a52dd82d2df8489088f43f8711adfba43b34a4d7d,Will the highest temperature in Seoul be 6 °C on December 6?,2025-12-06T00:00:00Z
+0x1cfbd7e86e05d08de1d1b83cdd551d97df5916e02e44d05655bc311ff75cc15a,Will the highest temperature in Atlanta be between 51–52 °F on December 6?,2025-12-06T00:00:00Z
+0x11d05359f58970add9bd24d129daf8b663a22ec04b19dbd4b1f932dbf0c99f25,Will the highest temperature in Seoul be 7 °C on December 6?,2025-12-06T00:00:00Z
+0x12687f468b32c4492491fa3d4c52f53fffa4243f0a136b6fbc15a4c127fe8e29,Will the highest temperature in Seoul be 4 °C on December 6?,2025-12-06T00:00:00Z
+0x118612c7b2f4e3695f028f4d67875e3e30a691b2a3e54cfc723b1f7ee55be634,Will the highest temperature in Atlanta be 55 °F or higher on December 6?,2025-12-06T00:00:00Z
+0x6cc49b7425fdd42d23e48dc7a459d9a4154597cfe5099dd0fb8d42d0790553c7,Will the highest temperature in Toronto be 5 °C or higher on December 6?,2025-12-06T00:00:00Z
+0x6576066925c0e5673972e4c9b280262c5915f8e750272f28262e1557e4a716c9,Will the highest temperature in Toronto be 2 °C on December 6?,2025-12-06T00:00:00Z
+0x7a74c83d7add5678e1f323cd85619e3f527f081be2431af89237d4f7aee86fd2,Will the highest temperature in Dallas be between 59–60 °F on December 6?,2025-12-06T00:00:00Z
+0x72cd2fb75515782c668807d62d514706cb0a5c11490956ac4c583cc9de1baaf9,Will the highest temperature in Seattle be between 48–49 °F on December 6?,2025-12-06T00:00:00Z
+0x4c9f5aadd561e474eed289223a87c921c1a816f3f34869a7994c23c7a2590fb7,Will the highest temperature in Buenos Aires be 29 °C on December 6?,2025-12-06T00:00:00Z
+0x4d9b9ec1435745ce4879c62939632f3aeb6ef37065ae40a1ebf200148a20843f,Will the highest temperature in Buenos Aires be 31 °C on December 6?,2025-12-06T00:00:00Z
+0x4b33d0029ee08a3be55770865171af8774805e8d31f8f07f921a9dfc18e5d372,Will the highest temperature in Seattle be between 56–57 °F on December 6?,2025-12-06T00:00:00Z
+0x404f1781826a3e13a55b7dba0d33fdd08f0c090c90d79534c455e025a460b5ac,Will the highest temperature in Seoul be 9 °C or higher on December 6?,2025-12-06T00:00:00Z
+0x4098ea11ce76b5f9e84ca54a0d219e297cfd185fe78e001f946954d81bf140c1,Will the highest temperature in Dallas be 54 °F or below on December 6?,2025-12-06T00:00:00Z
+0x4df0fc8c12bd19e5d0acec849465590d2f4182802fffdc32fe4f09c692d0f550,Will the highest temperature in Seattle be between 54–55 °F on December 6?,2025-12-06T00:00:00Z
+0x52b328c1e55dd28963311148081dd65a353cb4fa43f376c37c771f89bbca0b0e,Will the highest temperature in Atlanta be between 49–50 °F on December 6?,2025-12-06T00:00:00Z
+0xe6aaeaed1eaba5c98787cd168c98bfb519d013275d76d38fe4620d9035f6ade8,Will Chicago have a white Christmas?,2025-12-25T00:00:00Z
+0xdf99b35859d46de86fa59eb4d3afca8ee577e5abbc45598bed8d5c2f07d3e580,Will Seattle have a white Christmas?,2025-12-25T00:00:00Z
+0x32b639f8e1f144c9d33f053c487fde0c4fe5cf10a4b2b1711fa64d9f97be56b8,Will Boston have a white Christmas?,2025-12-25T00:00:00Z
+0x30dd675bed8d9e9ab5827bc18ba130531ec3f1cbf42c358a117c161617a7594b,Will Miami have a white Christmas?,2025-12-25T00:00:00Z
+0x0f8b750b854929231d7709fc6323a5f3440f8487fc93f8dcd68c6ff61ec441a4,Will Washington D.C. have a white Christmas?,2025-12-25T00:00:00Z
+0x16702480d90cb660fd9d7c9921e644a1e6fc6df3537aa35b44a75513fd195333,Will St. Louis have a white Christmas?,2025-12-25T00:00:00Z
+0x630e19aeec06a522bd059569d65b368cff1bb3c6bbadc5c926eee77d41b41ff0,Will New York City have a white Christmas?,2025-12-25T00:00:00Z
+0x6911536758518f0e77d5301cdabde27173cecc99126a953ae4753c9f28bae7ea,Will Philadelphia have a white Christmas?,2025-12-25T00:00:00Z
+0x43d3387a5923d8e8d7a585118fe987dc750526fd6a02c33e2b846825d8eab5a1,Will Dallas have a white Christmas?,2025-12-25T00:00:00Z
+0x5ec1564e0902e14b11aef7a09e163d6ee9f6539da2f4c05ca91877141143a1c0,Will Detroit have a white Christmas?,2025-12-25T00:00:00Z
+0xa08b11cb071c93b414a64dfa0ed32ab540e35c16df5213efac05ae48f484b177,Will it Snow in Atlanta this December?,2025-12-31T00:00:00Z
+0xe13dc32de918344f857b261feab9a4bfd5ed8653846f16bfe85889e2a17fc29b,Will it Snow in New York City this December?,2025-12-31T00:00:00Z
+0xf27131b2e1fbdcf70030e07567b0d496fbc271eebffd2022590c3f98e2b2222e,Will it Snow in Seattle this December?,2025-12-31T00:00:00Z
+0xd18c8995fdbb74c9f614320923b0b0835773dda85b91cb2b7c7a349859f19583,Will it Snow in Phoenix this December?,2025-12-31T00:00:00Z
+0xd9e049091509e922bb4154979d0cee70b02541c5ff948fd2df6a74a426631292,Will it Snow in Miami this December?,2025-12-31T00:00:00Z
+0x0e1bac16c7cc014a5d803d1ab2325a50a409fd824f0bc247f0f5ba9afe64afc6,Magnitude 6.5+ earthquake in LA before 2026?,2025-12-31T00:00:00Z
+0x193844073f23ed98dcfe38fde2b84c396b04ec35c243f49599458aafcbf2a824,Will it Snow in Pittsburgh this December?,2025-12-31T00:00:00Z
+0x1d6ee8facc0c4bf9e40972d8a9c195c55ad6d93b48d2be6e3f05978b68f4b479,Will it Snow in Washington D.C. this December?,2025-12-31T00:00:00Z
+0x1873b08bfae016f830af95e2f04c4f5ce86e2e7e5a8711c2bb0f312b00fa3478,Megaquake by December 31?,2025-12-31T00:00:00Z
+0x14c6e108a10e3c1c31ef1223aefc48f1450ee9b5f30da1511b640ac500aece7e,Will it Snow in Philadelphia this December?,2025-12-31T00:00:00Z
+0x7ba51606df3ad371724e6c7ee60f68ca837b8f873803e9ca66253c4cdb131d1a,Will it Snow in Boston this December?,2025-12-31T00:00:00Z
+0x540544d6b06cf28fb6943afc68f437567234d61c52a15580e7562ce91d0d298d,Will it Snow in Dallas this December?,2025-12-31T00:00:00Z
+0xa6427da636a22cf7afaefb5aac5ca314c5ca5767aa46c095312a5a9c319f84e6,Megaquake by January 31?,2026-01-31T00:00:00Z
+0xb38c721014d67d817d49e9f4a3af223f9b5fde4f4b2c85e99b67ef183f379e8f,Will the highest temperature in New York City be 28-29°F on February 1?,2026-02-01T00:00:00Z
+0x971059165aeb2ffc9720b025eadc38148baf0271d29a784d0a96265d76fe7b33,Will the highest temperature in New York City be 20-21°F on February 1?,2026-02-01T00:00:00Z
+0xdca42e1c2af8700ecd68d546f9e0e59c130da8c2dded85680743fe98a1f92afa,Will the highest temperature in New York City be 24-25°F on February 1?,2026-02-01T00:00:00Z
+0x4b1b0a9d0eb43ebdfda305f833017dc47f23037a479bb967bbc5759580f20132,Will the highest temperature in New York City be 26-27°F on February 1?,2026-02-01T00:00:00Z
+0x47a576042f19f633be507d257328fdcd8aa0ade33bd14d6ad1e48dd8d9170b69,Will the highest temperature in New York City be 22-23°F on February 1?,2026-02-01T00:00:00Z
+0xc203c8efd9c569ea880423593801f56dfd761a205507a9ce3c6f781a06410adc,Will the highest temperature in New York City be 31-32°F on February 2?,2026-02-02T00:00:00Z
+0x91af7d5cd1af012af17dd99710f8daae4463a692236e031f5600d83d22064044,Will the highest temperature in New York City be 37-38°F on February 2?,2026-02-02T00:00:00Z
+0x912caa763db0c86630ec9e0e2eae73dba3f0f39d7f10214fc244f94d0e7fde80,Will the highest temperature in New York City be 35-36°F on February 2?,2026-02-02T00:00:00Z
+0x3ca722801380e84b87fefdf1c30531469798e8dd23ad1406e2bc81ada78f73bf,Will the highest temperature in New York City be 33-34°F on February 2?,2026-02-02T00:00:00Z
+0x026cd1a6e125ad3ced4ebd522283e2bd2d6eafed1a0a5f9e856b25303f885cd2,Will the highest temperature in New York City be 29-30°F on February 2?,2026-02-02T00:00:00Z
+0xbc31098a97448ebf99910233b250431f7350d092710cafeb357a274ed5542a00,Will there be exactly 0 earthquakes of magnitude 6.5 or higher worldwide by February 15?,2026-02-15T00:00:00Z
+0xf8295db18c3f6e69e83b2663ff788092ac7bfd0d7098e3bdbed3955f6df695be,Will there be more than 5 earthquakes of magnitude 6.5 or higher worldwide by February 15?,2026-02-15T00:00:00Z
+0x2f4acb50d1e8695c2206e272d5ccf8516d7e4a876c180745afc410f420a806c2,Will there be exactly 2 earthquakes of magnitude 6.5 or higher worldwide by February 15?,2026-02-15T00:00:00Z
+0x00fcf8c3d9ca76940d288b40b6cc53e3aa3fbe11f2233971df49254e7539a5b9,Will there be exactly 4 earthquakes of magnitude 6.5 or higher worldwide by February 15?,2026-02-15T00:00:00Z
+0x6af651cd8f28211ab86fa391f17a1333e89b43edae8591b0203fd4e4dd5b27ee,Will there be exactly 3 earthquakes of magnitude 6.5 or higher worldwide by February 15?,2026-02-15T00:00:00Z
+0x76ae1b977eff71234961eba76944814b540eae7153f8010c66160b651e50fbbe,Will there be exactly 5 earthquakes of magnitude 6.5 or higher worldwide by February 15?,2026-02-15T00:00:00Z
+0x46354d4ba5f43ecd6b25ece6230c347f226de2c303742083286716bdd6c16f60,Will there be exactly 1 earthquake of magnitude 6.5 or higher worldwide by February 15?,2026-02-15T00:00:00Z
+0x8afd4f8cefbfdaac663861b75f618e3f13518da2e2039b558183b1b407581efa,Will there be exactly 1 earthquake of magnitude 6.5 or higher worldwide by February 22?,2026-02-22T00:00:00Z
+0xea7121a9b167061806667626f9488acc5386cd813abb1d347fa7c505a9790ff6,Will there be more than 5 earthquakes of magnitude 6.5 or higher worldwide by February 22?,2026-02-22T00:00:00Z
+0xea2a73396dd85280774897b26e03c95262ac537d817f0ac3fa2300364aed29a5,Will there be exactly 3 earthquakes of magnitude 6.5 or higher worldwide by February 22?,2026-02-22T00:00:00Z
+0x3f4c10986b4dcd38239681f3d18b126613976aa430e91b504de165746ca7789f,Will there be exactly 4 earthquakes of magnitude 6.5 or higher worldwide by February 22?,2026-02-22T00:00:00Z
+0x0d763e37fe0eaed22af1fae2aece062d4e09ccfb32988f7f7f187df998469374,Will there be exactly 0 earthquakes of magnitude 6.5 or higher worldwide by February 22?,2026-02-22T00:00:00Z
+0x13a6561aefb0027bce8e6a798bdc9fcde07889005ede375ef511dee7d30e3516,Will there be exactly 2 earthquakes of magnitude 6.5 or higher worldwide by February 22?,2026-02-22T00:00:00Z
+0x6a6a25188602a8964bced2c6ce082a476d144cc110f42390ab2bfd6c2845f885,Will there be exactly 5 earthquakes of magnitude 6.5 or higher worldwide by February 22?,2026-02-22T00:00:00Z
+0x895751822191055f81a6fbe0c1eb47f8f6c1d3f9b6e4eac4334d17d3dda33c58,Will there be exactly 0 earthquakes of magnitude 6.5 or higher worldwide by March 1?,2026-03-01T00:00:00Z
+0x1150cd12a2a57a79b47bb996026cdaae2c1a1f171262866122e55154c02eb7d7,Will there be exactly 4 earthquakes of magnitude 6.5 or higher worldwide by March 1?,2026-03-01T00:00:00Z
+0x6b3a453bedc0afd3fc4124ab7276b95bd50284295b9dcc02285550af0ca639a7,Will there be exactly 5 earthquakes of magnitude 6.5 or higher worldwide by March 1?,2026-03-01T00:00:00Z
+0x7991f8f80fcfe27840929f6a4816b3eb338e9f59c9defe820e5d525939845619,Will there be more than 5 earthquakes of magnitude 6.5 or higher worldwide by March 1?,2026-03-01T00:00:00Z
+0x73d4226356866d828fbad76f0f63e4959f7b4eed90aaf4695442316d73269f30,Will there be exactly 3 earthquakes of magnitude 6.5 or higher worldwide by March 1?,2026-03-01T00:00:00Z
+0x461e22e3ef7e027bb8e6a8e1c8e40db12235ff69ccc6cdcfb8200976d376a97c,Will there be exactly 1 earthquake of magnitude 6.5 or higher worldwide by March 1?,2026-03-01T00:00:00Z
+0x45a632a5d2a8eef60c984fcc53e4f9cdc768c059dbebe4528dc0db9dfdfda50d,Will there be exactly 2 earthquakes of magnitude 6.5 or higher worldwide by March 1?,2026-03-01T00:00:00Z
+0x2b7c8142b7c64cb1b421804741e7842aac85c92c5859cf66da5356949ddd95c9,Will there be exactly 1 earthquake of magnitude 6.5 or higher worldwide by March 8?,2026-03-08T00:00:00Z
+0x026944f9af9d8aa9150e1eb7777130beae4cd0fbeb2e5c4caa44929ae3d6cc69,Will there be exactly 2 earthquakes of magnitude 6.5 or higher worldwide by March 8?,2026-03-08T00:00:00Z
+0x6ac25f3bdd10c94a8fa9bc8b2c955d1bb448018e859613e174afb5de6db21e00,Will there be exactly 4 earthquakes of magnitude 6.5 or higher worldwide by March 8?,2026-03-08T00:00:00Z
+0x7850e19406d84138901781bdb1ad1f1681de5006b807880f224d2db7949b0375,Will there be more than 5 earthquakes of magnitude 6.5 or higher worldwide by March 8?,2026-03-08T00:00:00Z
+0x7bb6f418e2495c7d59635fa699aaf4167995b8835aeeb2113ebfadccb704c3c0,Will there be exactly 3 earthquakes of magnitude 6.5 or higher worldwide by March 8?,2026-03-08T00:00:00Z
+0x70da368b2e9f3e846137ea663088dc205012514f2011e5a1d7e744ae1a8837d5,Will there be exactly 5 earthquakes of magnitude 6.5 or higher worldwide by March 8?,2026-03-08T00:00:00Z
+0x4fe809d6e0afff1e1ea0dcfc6ce80a469ba5d6e9e366be22f59ad7e7ac76890c,Will there be exactly 0 earthquakes of magnitude 6.5 or higher worldwide by March 8?,2026-03-08T00:00:00Z
+0xf55f9a24edbb80cfb5e25633c93c64fbf5ce47dd82f748c7aa4fad034a78f052,Will there be exactly 3 earthquakes of magnitude 6.5 or higher worldwide by March 15?,2026-03-15T00:00:00Z
+0xc0feb4606e8a8881b6baad7ec05c7bd089672d0788e1b5e409e14a03fcc03727,Will there be exactly 5 earthquakes of magnitude 6.5 or higher worldwide by March 15?,2026-03-15T00:00:00Z
+0x2a27b4825c7c45e08770a048697457241a670228c081e422f71b28cdd9302f08,Will there be more than 5 earthquakes of magnitude 6.5 or higher worldwide by March 15?,2026-03-15T00:00:00Z
+0x713bbf64d1b17b7d2dc946d291dd965d5a6b1e643a1ded5784089332678299bc,Will there be exactly 1 earthquake of magnitude 6.5 or higher worldwide by March 15?,2026-03-15T00:00:00Z
+0x49bb29b5a0b1165e35fcf94cc77a249fb7f6aecdcb5e318408ca89f15ffe07fe,Will there be exactly 4 earthquakes of magnitude 6.5 or higher worldwide by March 15?,2026-03-15T00:00:00Z
+0x443ae803279d361eddfed7eaf8ee128d9d20ba40db50f8f4c90fe28268f56c66,Will there be exactly 2 earthquakes of magnitude 6.5 or higher worldwide by March 15?,2026-03-15T00:00:00Z
+0x5c60bf92ee4d2183c90cb3fe0b8ed1119fe41e71c8ede25d016b155d02d20e5c,Will there be exactly 0 earthquakes of magnitude 6.5 or higher worldwide by March 15?,2026-03-15T00:00:00Z
+0xa805b5ed2863c39bdeec09509a995a9db8a5a403bd5c6cbe271982646bea20f7,Will London have between 60-70mm of precipitation in March?,2026-03-31T00:00:00Z
+0xb66d7b03b7d9a9573aee4f34648363231414085874fd2bde161b6b25d68c0b04,Will Seoul have 60mm or more of precipitation in March?,2026-03-31T00:00:00Z
+0x9e8dd6ad590021a44e5f6b5dc20c7c64fdfa8bb332df500b9ecaa6f6b71c6205,Will London have 70mm or more of precipitation in March?,2026-03-31T00:00:00Z
+0x951d30235bef7bd233b856eb9cfa2e08facf4131b02edadbfe377be532e2820d,Will London have less than 20mm of precipitation in March?,2026-03-31T00:00:00Z
+0xf355655fbd08319839ed3aceda8119e10969be2b64bfa5b814aa80a3d1166f4f,Megaquake by March 31?,2026-03-31T00:00:00Z
+0xf4619c85cae11645e2f7d838421085c278662ecf0f5fe440ccfbd067914b4967,Will Seoul have less than 30mm of precipitation in March?,2026-03-31T00:00:00Z
+0x2084dd539afa47009cf282326f9071075f790c19fdf690ad0a4d4162ecc171b5,Will Seoul have between 35-40mm of precipitation in March?,2026-03-31T00:00:00Z
+0x2592c27d2c907d67b658d74462668ca79c272f6a6d064b520f66633a57e90a59,Will London have between 40-50mm of precipitation in March?,2026-03-31T00:00:00Z
+0x39dcc1cf335c089702207220dc164d2031d9d481b13f09fc450f8300fd3d7e37,Will London have between 20-30mm of precipitation in March?,2026-03-31T00:00:00Z
+0x34b505206822c84123fbb326218d12c2863377914e2674c6c0d4a07a1f9185f3,Will Seoul have between 40-45mm of precipitation in March?,2026-03-31T00:00:00Z
+0x0853966bf4298a16becfab005d73c84e9d10d593736fd54ae5f78849addb6d5b,Will London have between 50-60mm of precipitation in March?,2026-03-31T00:00:00Z
+0x0cbd737a05551c9b5f71667367fceff5a588a4ff00639d703e66362f31432f21,Will Seoul have between 55-60mm of precipitation in March?,2026-03-31T00:00:00Z
+0x0631957f78eda6e83697477614619470eb6ded87382aaa75b6dd75cc35101614,Will Seoul have between 50-55mm of precipitation in March?,2026-03-31T00:00:00Z
+0x125fae06672f3dca12e3db118512ccd14638b4b9db222ab7d6c70e52436e6dbf,Will London have between 30-40mm of precipitation in March?,2026-03-31T00:00:00Z
+0x12be0cca95839362b481d10188bc7f9f3ac72af7835e7a07aedc7488afdd31d6,Will Seoul have between 45-50mm of precipitation in March?,2026-03-31T00:00:00Z
+0x5b39a8bfcbbafa4180f6a1973a0ee9ca31e01f3e50d0be634a433c2af4fa35e6,Will Seoul have between 30-35mm of precipitation in March?,2026-03-31T00:00:00Z
+0xab66bc7bd374546d9f4469539d382d6b89fab47185e18b7a95e496cb417abc14,Will the maximum Arctic sea ice extent this winter be between 14.2m & 14.4m square kilometers?,2026-04-01T00:00:00Z
+0xefaeb34043f22c39e83999ba80da714a07538864c168273ffd55b71227350f03,Will the maximum Arctic sea ice extent this winter be between 14.6m & 14.8m square kilometers?,2026-04-01T00:00:00Z
+0xc78b297583d230d0e5d32c37528160c927de662fcb50ce37348d6716f9baa022,Will the maximum Arctic sea ice extent this winter be between 14.4m & 14.6m square kilometers?,2026-04-01T00:00:00Z
+0x08fd1649340d10dc0b375551a94417ed7d2f725cd35da61660d94b6278158126,Will the maximum Arctic sea ice extent this winter be between 14.8m & 15m square kilometers?,2026-04-01T00:00:00Z
+0x11962641a7864d5ce1205a92bf45171add9ebd5c24af00645ea4ef6ac40f8c00,Will the maximum Arctic sea ice extent this winter be between 14m & 14.2m square kilometers?,2026-04-01T00:00:00Z
+0x7565fa4841aff5623c741ffb79a99d8970f86a84d7966d186d882e9af695e801,Will the maximum Arctic sea ice extent this winter be <14m square kilometers?,2026-04-01T00:00:00Z
+0x4b40d30ff10830a0dfd25288b0c3ac896d93bb2c94c754c750513e6a8cf8e073,Will the maximum Arctic sea ice extent this winter be at least 15m square kilometers?,2026-04-01T00:00:00Z
+0xf85db40d68e4816027b351a0a934d790160a9e2a145d659dab4739b9a980f6cd,Will London have between 60-70mm of precipitation in April?,2026-04-30T00:00:00Z
+0xc9804657495004da1eabe086f08bfa2a0a83f8ec02630d73248de80357cc297a,Will London have between 50-60mm of precipitation in April?,2026-04-30T00:00:00Z
+0x212128f1da71fa9d86a10fb654a67b729b48ef96f1ab34af1fa1438199811c32,Will London have between 20-30mm of precipitation in April?,2026-04-30T00:00:00Z
+0x0c555465c8840406d8ce450ecf0a98e20020e1b88ee2855b0618b7e7010033dc,Will London have between 30-40mm of precipitation in April?,2026-04-30T00:00:00Z
+0x65034eb62e5812098462aa0452ae0fb54db99b55d1763ae2d64317af8aae5c6b,Will London have less than 20mm of precipitation in April?,2026-04-30T00:00:00Z
+0x67533932f32371a17426ab9f1e0d5820535546b6705a4f4cf25090b51ee4cbe1,Will London have between 40-50mm of precipitation in April?,2026-04-30T00:00:00Z
+0x572b967cbb2e8f78059f65d345cc3985cfa65dede6fd359eeee10ecb483fe80e,Will London have 70mm or more of precipitation in April?,2026-04-30T00:00:00Z
+0xb891d599b75f454a663873ff7495141fd4c8d1b36f378bb593464cf5ebeed76c,Will Detroit record the first snowfall?,2026-05-01T00:00:00Z
+0x9e645463cfe5fca492926531a4b57eba5390328eb3ee005890524a8699889ebc,Will New York City record the first snowfall?,2026-05-01T00:00:00Z
+0xd66921a35e610c40cebdfe46cd6b2458510f155ed38d1045a41d2317ba31ca45,Will another city record the first snowfall?,2026-05-01T00:00:00Z
+0x28730439c0a67260a7924beaf32648b8fbd86501d874805ba1741c39023c0b5b,Will St. Louis record the first snowfall?,2026-05-01T00:00:00Z
+0x1c236208c8fca6b1ce2f4c9b91bc1c2dbb255e3fec064a3c0ed2dcb82b225485,Will Chicago record the first snowfall?,2026-05-01T00:00:00Z
+0x4495596ef99ce27149438102ea678eaba0c46053ce37abda7140680cc84b13ad,Confirmed case of Hantavirus in US by May 15?,2026-05-15T00:00:00Z
+0xa717df3decd9f41d8f330ca543f38dcf74895110275b318f7934879dd260fd57,Confirmed case of Hantavirus in US by May 31?,2026-05-31T00:00:00Z
+0xf410fc9d37983494010f4102e57b5ec5e0f02712692e6ed749dba71e55f6333c,Another confirmed case of Hantavirus in US by May 31?,2026-05-31T00:00:00Z
+0xda286fc6da9625b9ea72ad8a8593a150a4982762f99f1289b15a76948915ce64,Will a hurricane make landfall in the US by May 31?,2026-05-31T00:00:00Z
+0xd1b5f2ca840de370c633eb7e640296a21eb8f82fd946c485d3274ee8a8d75381,Will a hurricane form by May 31?,2026-05-31T00:00:00Z
+0xc2bdda12ca77e062b4a18299f3a0f29db5ae75b2812e5f7b288c9f6010dd4311,Will it rain in Denver on June 9?,2026-06-09T00:00:00Z
+0xc571c8433f13f5eee92f53532453d5abca53f0538468ca57e12af6473794a944,Will it rain in Dallas on June 9?,2026-06-09T00:00:00Z
+0xd95de5e932586f26eae113764ce8ed79c526a60a773e84b2e48f4f83b5aa3e77,Will it rain in San Francisco on June 9?,2026-06-09T00:00:00Z
+0x7a6c7d51b9de3a3439ebb40128875c9f3efa742f7794148b391e74d6a24cb45f,Will it rain in Central Park on June 9?,2026-06-09T00:00:00Z
+0x7317d87ee12d75b901d52928bbc8244945e4d62e6bc2dcd90ed19bf7f614c092,Will it rain in Boston on June 9?,2026-06-09T00:00:00Z
+0x5d42e0ea713c1472bf220fa09821e59c28068b7f4bbfb7fa927bf501d604d9d9,Will it rain in Atlanta on June 9?,2026-06-09T00:00:00Z
+0x85c994bc7dcf1cd6f37f0c21d1be4df282749dbdd6b81e2a9ee912d65f2aa614,Will it rain in Dallas on June 10?,2026-06-10T00:00:00Z
+0xe45bdc436a303864de01c5341f21efc645dbc6c95e2512bfeb965e65a0aa43d7,Will it rain in Boston on June 10?,2026-06-10T00:00:00Z
+0xfe91ff9b34aae58051414c3047dcece9eb7e0b528a2a191440242f72f8789baa,Will it rain in Atlanta on June 10?,2026-06-10T00:00:00Z
+0xf0ba70a771a47929e1290a9c57cbfe65210897896e265e8849a16269f7a21b53,Will it rain in San Francisco on June 10?,2026-06-10T00:00:00Z
+0x64990aa975084419e9a50b29448505f008a446bc5191d04f1c2795cd80852096,Will it rain in Denver on June 10?,2026-06-10T00:00:00Z
+0x2c8de9b5699963744b5bc15b9cc6e1f79ee3a06217b137fc0145d87510350b18,Ebola emergency by June 30?,2026-06-30T00:00:00Z
+0x0a632e4dc9cce43da54a282cb46784ee9a13b0e0825c831f4d122531143e8ace,Ebola case in the US by June 30?,2026-06-30T00:00:00Z
+0x63bd6b51d2fd4ddb1a1b9e5a29fd949e52907b0d2dd58dfaa399ce1e9d2939b6,Megaquake by June 30?,2026-06-30T00:00:00Z
+0x4cd71e7b8c5c3f7cd1fc025002b2982aae1e5f70a65bf1faaae121299127537b,Hantavirus lab leak confirmed by June 30?,2026-06-30T00:00:00Z
+0x57c9a5817bc945d71686ed859417a1d26bd63f0e416f8b21156fa1c87f05f77a,Hantavirus outbreak by June 30?,2026-06-30T00:00:00Z
+0xb0e4524bc90c5388b195d544739e5c6b6802bb6271c32fda29a39b410a98eb9e,England-Mexico game rescheduled to different time?,2026-07-05T00:00:00Z
+0x32db9a3b8f05993f1760e8b1afc39647b5a1f7721ff47a16791d129c00fd0050,England-Mexico game rescheduled to a different date?,2026-07-05T00:00:00Z
+0x92033b2667ee97c7c817c01a4187e67148c6bd3febe357edabbe8d2b665722fd,Will it rain in Dallas on July 4?,2026-07-06T00:00:00Z
+0xbfb226847990a1af4ad298a6dbff96dec996aecd0357fe12aca74c04d26ff191,Will it rain in Boston on July 4?,2026-07-06T00:00:00Z
+0x3a5b45f7da2930791f79c0869ae8d9616316f2306d72e8f70966993be5c43d6a,Will it rain in San Francisco on July 4?,2026-07-06T00:00:00Z
+0x420ddb91810dcb0c72789fbafbc2db050e86539155afe4b46ca07448deea4d4f,Will it rain in New York City on July 4?,2026-07-06T00:00:00Z
+0x0bdcad7bdef6d8ba6eab0d3e856de056618d73427ef4090de61c58dcbf9b4019,Will it rain in Washington D.C. on July 4?,2026-07-06T00:00:00Z
+0x1fb50a955369130f33ffdd87f7bd53696ee1ba90743ea9b5c51855df37c311a3,Will it rain in Atlanta on July 4?,2026-07-06T00:00:00Z
+0x5cae330cf1aa19d686e0907e92a68444467b2ad9f7ee73d212e655972c710e23,Will it rain in Denver on July 4?,2026-07-06T00:00:00Z
+0xfd0386e02895c709df727a456ad0f2130f381146b5ed0673db712ab56f7d457d,England-Norway game rescheduled to different time?,2026-07-11T00:00:00Z
+0x9be6fbcc403919b5c45b160b2350ae2761c00db18da08b45053fd38cd5c23de8,"Chicago Air Quality Index below 100 by July 18, 2026?",2026-07-18T00:00:00Z
+0x3044e19a1ade0c0972d230b0eae47119933671feecccc7b31d1b4ddb7e0efa6b,"Philadelphia Air Quality Index below 100 by July 18, 2026?",2026-07-18T00:00:00Z
+0x360bbea6ddf87240094cf0039698673737467a856dd267c4f93bb8972a9c25b8,"Columbus Air Quality Index below 100 by July 18, 2026?",2026-07-18T00:00:00Z
+0x6fc07756ddf21836875429021c4f39a36f21ae4d0617853dfffefa9e34a334b7,NYC Air Quality Index below 100 by July 18?,2026-07-18T00:00:00Z
+0xa9a5b31aed566b01ffbfc56cf13c8677e6db9a5a245c14a742ed7be086776814,"Chicago Air Quality Index below 100 by July 19, 2026?",2026-07-19T00:00:00Z
+0x8058955fc8958fc529b5f3b17f0c665aedae586a9f78f9c361c380c1410ecaaa,NYC Air Quality Index below 100 by July 19?,2026-07-19T00:00:00Z
+0x8518b54fb96baa0f6ccee0bf0f63855253184f9c08437dd68eb8936a38fbc71c,"Columbus Air Quality Index below 100 by July 19, 2026?",2026-07-19T00:00:00Z
+0x7d55054d747cd556d293b519ac7262ffe341f86224993e1b002ec94880961d6c,"Philadelphia Air Quality Index below 100 by July 19, 2026?",2026-07-19T00:00:00Z
+0xc9618424ca38d25b763a2208af0f973dd12640f1933fa5b0ba4af204949e9980,NYC Air Quality Index below 100 by July 20?,2026-07-20T00:00:00Z
+0xdc2eb0b8f6bd86434b9f245becf9b5c5b59ed11c2856fe5d9524fd04ed3b3428,"Columbus Air Quality Index below 100 by July 20, 2026?",2026-07-20T00:00:00Z
+0x70afafab7bb883573d72a75d6277f81233073b196041bd9916a7ef304f9e43a5,"Chicago Air Quality Index below 100 by July 20, 2026?",2026-07-20T00:00:00Z
+0x4b77e6effce38f367ac97d564db50766ae2e6153c2ad27c2ea123eb05b26387d,"Philadelphia Air Quality Index below 100 by July 20, 2026?",2026-07-20T00:00:00Z
+0x8ba355c0b811e5c6077c6fbf18a8d112bc5135abbdfa3069183fe8f55988b167,"Columbus Air Quality Index below 100 by July 21, 2026?",2026-07-21T00:00:00Z
+0xfe9874994f6c2b8958b814ce1e6d6a29137979752855fda2f8853314149c0811,"Philadelphia Air Quality Index below 100 by July 21, 2026?",2026-07-21T00:00:00Z
+0x7c2e17fc3370329e9147dd8f636e610b7d68df134cfaec612e2d68a1f3a45fd5,"Chicago Air Quality Index below 100 by July 21, 2026?",2026-07-21T00:00:00Z
+0x7c30a4855814ac4477a60c1882be926db62e13705adb2d2b90847977667bda27,NYC Air Quality Index below 100 by July 21?,2026-07-21T00:00:00Z
+0xa440de9128d53784407818dcd22b43eee3888819edcb8799b3f24ac83b836fe9,Paris heat wave by July 31?,2026-07-31T00:00:00Z
+0xa55abb80feae5d2ea13697bb394a37d49b4f0e30e7a9e8611d545abd014399b1,Will the highest recorded wind on Mt. Washington in July be at least 105 mph?,2026-07-31T00:00:00Z
+0x840e22bcc7de06ac05036ebfd4c65b56da368b0572940d0f2ff789cb5fcadf0c,Will the highest recorded wind on Mt. Washington in July be at least 95 mph?,2026-07-31T00:00:00Z
+0xcea712eb3d9ccf24b574ccea414b932f99b33f4dbc04afb63b679b8a444b4cd9,Will the highest recorded wind on Mt. Washington in July be at least 110 mph?,2026-07-31T00:00:00Z
+0xcd7f63491518eb15a203195dac4fb8c31e8580388ecc4adf4b3868a8bc08a893,Will the highest recorded wind on Mt. Washington in July be at least 100 mph?,2026-07-31T00:00:00Z
+0x2264a7f5a0a8a83fa7590f46162637ee64243839484bd7f4331be5a840215ffd,Megaquake by July 31?,2026-07-31T00:00:00Z
+0x055c7d0cab6414ce06e23de5aa1cfcdde66f50988fd1c888d24414f3aa850c1c,Will the highest recorded wind on Mt. Washington in July be at least 115 mph?,2026-07-31T00:00:00Z
+0x1a2a79b91a223aca7d3f59caa69d5aaa1a4ffde7831cfd13746d8f4d2504505a,Will the highest recorded wind on Mt. Washington in July be at least 85 mph?,2026-07-31T00:00:00Z
+0x61259531f004ae35d55253d3796036313137de9c76f150c932fda41a565f517d,Will the highest recorded wind on Mt. Washington in July be at least 90 mph?,2026-07-31T00:00:00Z
+0xcffc9f1c96c16a897bd1b1189bb95b49fbc0a3af2d0bbe718b60facd89cd020f,Will it rain during the Hungarian Grand Prix?,2026-08-03T00:00:00Z
+0xaab2ac9b31a9c688c11ba2bc8867651673860a1c57aeb604827fe92819998559,Will there be exactly 11 earthquakes of magnitude 5.5 or higher worldwide from August 3 - August 9?,2026-08-09T00:00:00Z
+0xa13105bbceb874989981254ac2a18000cf9628e754ac677cffecc6c504262360,Will there be more than 13 earthquakes of magnitude 5.5 or higher worldwide from August 3 - August 9?,2026-08-09T00:00:00Z
+0xa41b59652de3b2364362baef91ed12a8824a76c25dd26daf3caf1fe6d8d83434,Will there be 6 or fewer earthquakes of magnitude 5.5 or higher worldwide from August 3 - August 9?,2026-08-09T00:00:00Z
+0xbbef22d2be2871b317ffbe8ce861d5963d4783289240341a49e0e41b937281f9,Will there be exactly 10 earthquakes of magnitude 5.5 or higher worldwide from August 3 - August 9?,2026-08-09T00:00:00Z
+0x8907805e2e3c3ece82fb41ed69b11e9df60f31e5ffb74469027925e549e75ebe,Will there be exactly 12 earthquakes of magnitude 5.5 or higher worldwide from August 3 - August 9?,2026-08-09T00:00:00Z
+0xf14b58647cedda00ff0d249b6bd8dd665a4c7bc733db259d9e9fd6f9b860e95d,Will there be exactly 7 earthquakes of magnitude 5.5 or higher worldwide from August 3 - August 9?,2026-08-09T00:00:00Z
+0x1bfbd18aacaab8e15d3c2cd7986e182686c78953b4d47a941d37dd9f79cf04ee,Will there be exactly 8 earthquakes of magnitude 5.5 or higher worldwide from August 3 - August 9?,2026-08-09T00:00:00Z
+0x6e6b48d386ec19d7c2191cd8345c4f898ff7bd5c2b0a7061fd9665cfec160c86,Will there be exactly 13 earthquakes of magnitude 5.5 or higher worldwide from August 3 - August 9?,2026-08-09T00:00:00Z
+0x8059927c9109374dbf8d917968cd2e1384c7b3672892d5d73a8b59ac5257ebbe,Will there be exactly 9 earthquakes of magnitude 5.5 or higher worldwide from August 3 - August 9?,2026-08-09T00:00:00Z
+0xfdfdfaa843c19bb340441ef7f4a63117a377bec5be0f8158fa7462d38f39c892,Will CSU forecast 7 or fewer named storms?,2026-08-10T00:00:00Z
+0x692133091cc28989e5c021ac336b728389fdd119cd1ad5abcc1d1e45789ca59f,Will CSU forecast 9 or more named storms?,2026-08-10T00:00:00Z
+0x76a314e1a409c938de187561da11766b0f64aa6a6d4425a6041f56464b906e4a,Will CSU forecast 8 named storms?,2026-08-10T00:00:00Z
+0xb431107342445ea3813d6453f22feb96dc287a2124a4ee7835c57954ad1f206f,Will the Total Solar Eclipse be highly visible in Reykjavík?,2026-08-12T00:00:00Z
+0x81ee89df94e4aef5d58138ef263a190b3857b00c24625ba83ddf07ae122056a6,Will Super Typhoon Dolphin hit Japan?,2026-08-16T00:00:00Z
+0x82ee04e99752f6ab13b6068c4eb6ed48632f95e9bb7c810c04f810db000c1be7,Will Super Typhoon Dolphin make landfall at Category 4 strength or higher?,2026-08-16T00:00:00Z
+0xd1786c5ff94672cc3c60320aded707c71c0ebe85415388cc3cfa882a5c77ff03,Will Super Typhoon Dolphin hit China?,2026-08-16T00:00:00Z
+0xefbd274fcba142575cdc838c4b40a7960c95c3804e93e8ad3e9193c4c520eae3,Will the highest recorded wind on Mt. Washington in August be at least 85 mph?,2026-08-31T00:00:00Z
+0xe39913e072ef77d5403794b88f686fb749d52d467056ff7fda06a5aad8d503da,Will the highest recorded wind on Mt. Washington in August be at least 95 mph?,2026-08-31T00:00:00Z
+0xfb0c716f26b60263970c49b0f9bbbffb48c850e495ecf5eeaf9272b7665057f6,Megaquake by August 31?,2026-08-31T00:00:00Z
+0xf63330c5f780141ff5d333bfea81296094e9c1e2db80241eb56a2f30de07a6a4,Will the highest recorded wind on Mt. Washington in August be at least 110 mph?,2026-08-31T00:00:00Z
+0x997fe8491d3e4ac272fed2a1f251e4845cc695b61a3178140e5a0d0efe660b95,Will the highest recorded wind on Mt. Washington in August be at least 100 mph?,2026-08-31T00:00:00Z
+0x3c1e711049cf7d8961f6917d0a893d75216876de63b6c2735426b57d5ddbb457,Will the highest recorded wind on Mt. Washington in August be at least 90 mph?,2026-08-31T00:00:00Z
+0x4f138eae6aca46db20d2d6dc64bc3f819b7caf8be0be88ff775cfb4197acae3b,Will the highest recorded wind on Mt. Washington in August be at least 115 mph?,2026-08-31T00:00:00Z
+0x5db611f394b59e52076830adfe781088b2addb36ee130643c1d7198c94c24836,Will the highest recorded wind on Mt. Washington in August be at least 105 mph?,2026-08-31T00:00:00Z
+0xb167c52768d124509d12d09c2a9d4d05566f1ebd5b179dd2c3be71fdb639e96d,Will total rainfall in St. Petersburg be between 3-4 inches in August?,2026-09-01T00:00:00Z
+0xb0bf6962048ce38df692c847d73d72f8e0d5c1f5a34c5d9f27546d327a30e944,Will total rainfall in St. Petersburg be 10 inches or higher in August?,2026-09-01T00:00:00Z
+0xb0b600f2ebdf0be04c24800440da01d8c247e6506cbfec6f15e1ae92e710a4b7,Will total rainfall in Denver be between 5-6 inches in August?,2026-09-01T00:00:00Z
+0xa6da71153e2b8f65dd15af8022a29934de4f3b8f3e14c3f647842e97e79f1dc2,Will total rainfall in Miami be between 4-5 inches in August?,2026-09-01T00:00:00Z
+0xa96065b17685d22eff80d9756c5a61fb50565fc658dea972124808423baaeb74,Will total rainfall in Denver be between 2-3 inches in August?,2026-09-01T00:00:00Z
+0xbb3f21b0e882dd238bbf5f52029f6daa2942ca9bdc9e71eccb9b8eafb2c11189,Will total rainfall in Miami be between 5-6 inches in August?,2026-09-01T00:00:00Z
+0xbc69bb47bd2c26c22cc5cdf1ae16a54f27facab237b6d7d04fec1b127212bc98,Will total rainfall in St. Petersburg be between 7-8 inches in August?,2026-09-01T00:00:00Z
+0x8c9dcfd6edaffa62cdc1c5d288c160bc8155c8ff8d6df253a6e12c2e7842073a,Will total rainfall in Denver be between 4-5 inches in August?,2026-09-01T00:00:00Z
+0x89fd95a73399b04a1bb5d5b854aeaf0d31ed4ba7c33c833cc0493dc4a45c2a8e,Will total rainfall in Denver be between 1-2 inches in August?,2026-09-01T00:00:00Z
+0x9763de73b2a4166219fe6a1a2c21e7ca7aaf005ab422f8c226437f1cd4b6e137,Will total rainfall in Dallas be between 1-2 inches in August?,2026-09-01T00:00:00Z
+0x9841e220f395e4f61c5669adaf479a714e36cae1279e9d1bdf7cebd845107b19,Will Phoenix be under an Extreme Heat Warning for 10+ days in August 2026?,2026-09-01T00:00:00Z
+0x98152f024bc4b1131f75064e97a4afc91c25fd1f8f662d32b7aaee3af4728fec,Will a hurricane make landfall in the US in August?,2026-09-01T00:00:00Z
+0xed45d9f8758223ab1e0fc644030c1b9838d437bde9c099417a32b4cd258e0352,Will total rainfall in St. Petersburg be 1 inch or below in August?,2026-09-01T00:00:00Z
+0xe70f7a8ba00c1d298b8d2cdfa3c8fcac2fde57c6c6f6f2cfb6419cae988e9968,Will total rainfall in Miami be between 6-7 inches in August?,2026-09-01T00:00:00Z
+0xe6841abbab256a40f392c357de050c7a215ee6043e5763b332ae26e1e8026315,Will total rainfall in Dallas be between 5-6 inches in August?,2026-09-01T00:00:00Z
+0xf05fe1f96748a4eb75c8c04fae5cacb1c6c0afe02e6d99197208f209b1e54171,Will total rainfall in Miami be between 1-2 inches in August?,2026-09-01T00:00:00Z
+0xfc9c7211edf7627163fc2541d031ec3537e64d7683168b10f902507cd999e733,Will total rainfall in Miami be between 8-9 inches in August?,2026-09-01T00:00:00Z
+0xcb594185a7b9ee94f2512519b38d5fcda0c3b881594606f4a2e516474ef8e5b4,Will total rainfall in St. Petersburg be between 5-6 inches in August?,2026-09-01T00:00:00Z
+0xc811d091e8f1cc9aff5ecadf3de650132a6158a14d9bc769bad39e4fbbe02941,Will total rainfall in Denver be between 6-7 inches in August?,2026-09-01T00:00:00Z
+0xcbcc2de2e8864eb70e276586afdcd36b8d4ef358cb87318522e608d20a94d606,Will total rainfall in Dallas be between 3-4 inches in August?,2026-09-01T00:00:00Z
+0xc185c9c4ae7777ef3626617f493d096d1dcd95a05d8afedcd9e56c6bedc099a9,Will total rainfall in Miami be 1 inch or below in August?,2026-09-01T00:00:00Z
+0xd0e66191853681730e4a0cfbf71b1ee9c73d8c222e2cb139bdd8147886b38075,"Will Oregon reach D4 (Exceptional Drought) by August 31, 2026?",2026-09-01T00:00:00Z
+0xd3bfea02600532290753c71f361bb05dc38cce562c75e0e255eb32572acfcbb2,Will total rainfall in Dallas be 1 inch or below in August?,2026-09-01T00:00:00Z
+0xd33a0a2e34f271e5264ad163b2e4124b22c7876b27d2eef145dfca010812119c,Will total rainfall in Dallas be 7 inches or higher in August?,2026-09-01T00:00:00Z
+0x293486448586392a8168d9c59907dced4228c30cab1456df416ad214e79771c8,Will total rainfall in St. Petersburg be between 1-2 inches in August?,2026-09-01T00:00:00Z
+0x282f697fee32a76390b11250255a9e2f1d921f320a12fd49ac3441417290d191,Will total rainfall in Dallas be between 6-7 inches in August?,2026-09-01T00:00:00Z
+0x2cc0cf0c7f4e35c8161f11aef3ca006b3510ea082028c33b48e2eec0a3a85cd9,Will total rainfall in St. Petersburg be between 9-10 inches in August?,2026-09-01T00:00:00Z
+0x2a490f865cdf89996215aba1e89751bc3f81000ba97d381a97f50be17f9052ae,Will total rainfall in St. Petersburg be between 6-7 inches in August?,2026-09-01T00:00:00Z
+0x20b45d652baababfba5568a7f2235952f97916476ae58b93e2f96f62dc5abba2,Will total rainfall in Dallas be between 2-3 inches in August?,2026-09-01T00:00:00Z
+0x33b9170a0c3191c66f5991e3e77590bc0175bff1f273679892068a27f02ea100,Will total rainfall in Miami be between 9-10 inches in August?,2026-09-01T00:00:00Z
+0x0b15e1f97df5e00d11abba77b9e852a090e48ec9675202f9ece5120b0bddf166,Will total rainfall in St. Petersburg be between 4-5 inches in August?,2026-09-01T00:00:00Z
+0x0c94d5f76103230acb572f64a656e413607c99447b1f5f2850122e5ab0a2bfd5,Will total rainfall in Denver be 7 inches or higher in August?,2026-09-01T00:00:00Z
+0x0107ea5d8a66b5e4b00af2f84ff841b5c0adc4dbc7e35e5e2834c0f6637e3772,Will total rainfall in Denver be 1 inch or below in August?,2026-09-01T00:00:00Z
+0x08d1e8ff46fb57f467c7e9def06f404abe9807644c2919ee17f40af8f00abc9e,Will Phoenix be under an Extreme Heat Warning for 10+ days in August 2026?,2026-09-01T00:00:00Z
+0x174ed08f2e3db0ce456a4634ddbb96fd6b1082d3bb9218209b66b2bd4d984432,"Will Virginia reach D4 (Exceptional Drought) by August 31, 2026?",2026-09-01T00:00:00Z
+0x71ec5f95b8f4397cbc2ba89ff8b424784bf7a92a56b7c00daf2624f45f1c2571,Will total rainfall in St. Petersburg be between 2-3 inches in August?,2026-09-01T00:00:00Z
+0x7f7dacc8aca79b8fd2f8283d98da11bb54d6d7b1fe5bea9b47b62f88cd81e912,Will total rainfall in St. Petersburg be between 8-9 inches in August?,2026-09-01T00:00:00Z
+0x83c5d94d7b8f8bfc4c5bf2b7b04b9ad8ad5cc02380172f4f3655a3ac5618e235,Will total rainfall in Miami be between 3-4 inches in August?,2026-09-01T00:00:00Z
+0x4a0a34bf3917ee4550546a068b5f29550123508c36301ee754ab9ca624c0d425,Will total rainfall in Miami be between 7-8 inches in August?,2026-09-01T00:00:00Z
+0x5acfafed41f979b4c9c8f8da6d79cc4051f420dfdb549968c32dd1ab10628810,Will total rainfall in Miami be 10 inches or higher in August?,2026-09-01T00:00:00Z
+0x5a3fa4e80ebf20136a6003776fd1a9e984ca1e4b6fd0846673e55a3684c349b8,Will total rainfall in Miami be between 2-3 inches in August?,2026-09-01T00:00:00Z
+0x601d7de7ef2228c3f04fcb16b53c43713c6a93c9efa38959e855c10e0d764749,Will total rainfall in Dallas be between 4-5 inches in August?,2026-09-01T00:00:00Z
+0x4efe5dc24990190c1d844db6164f5f24e052275df6f914b06d61dd77945a79b0,Will total rainfall in Denver be between 3-4 inches in August?,2026-09-01T00:00:00Z
+0xa776ef6b16f785ca718dfaf177743793acda4ee06c721253b868831f5089590c,Will the minimum Arctic sea ice extent this summer be less than 4m square kilometers?,2026-10-01T00:00:00Z
+0xa185967aec34ff498a0c8c99c5819ae02f0402a2ba568016a9ad1fac75627099,Will the minimum Arctic sea ice extent this summer be between 4.0m & 4.2m square kilometers?,2026-10-01T00:00:00Z
+0x2b4c48fee6abf0782b1b9e3f4388f32b028d559e34dbad32c7755c9265514e7c,Will the minimum Arctic sea ice extent this summer be between 4.6m & 4.8m square kilometers?,2026-10-01T00:00:00Z
+0x1454f7aabd1736d276e3a16c9d3840d5a0f31b15162e92602825db3f27c89f9c,Will the minimum Arctic sea ice extent this summer be between 4.4m & 4.6m square kilometers?,2026-10-01T00:00:00Z
+0x71893b06b5e12945bbd8723ab419be96957314e596ed9e971551a4a93165d994,Will the minimum Arctic sea ice extent this summer be between 4.8m & 5m square kilometers?,2026-10-01T00:00:00Z
+0x7dafab1697c0d44a23a28756f18411222eeae558a144640164ff3a5c8eb3818d,Will the minimum Arctic sea ice extent this summer be at least 5m square kilometers?,2026-10-01T00:00:00Z
+0x4c3dcf02d9c59d91b45c6d1d2005b5727587aa8071c02271f89fef4b3bfb38ad,Will the minimum Arctic sea ice extent this summer be between 4.2m & 4.4m square kilometers?,2026-10-01T00:00:00Z
+0xb620069d5ad0d903f5579f5ecc244b0ce5f7df08e214d17894c36255f4c14215,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Edouard?,2026-12-01T00:00:00Z
+0xb2e32a127f3ad840c6e767261aec82cb3691dc40e17383280fc939068f323425,Will there be 0 hurricanes during the Atlantic Hurricane Season in 2026?,2026-12-01T00:00:00Z
+0xb35e97ed0af4d002390b9635baed6221fb9c1dbc1c31e9e342916dafae1866f3,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Paulette?,2026-12-01T00:00:00Z
+0xe25f96e4774a1249c8fd103913cd43baac84f1dcdab7c7c9e14b4dff2a39769b,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Dolly?,2026-12-01T00:00:00Z
+0xe66a484f850a54dee26b71d80ac7a18912d4262dd0cc1c089f296912c07d5990,Will there be 7+ hurricanes during the Atlantic Hurricane Season in 2026?,2026-12-01T00:00:00Z
+0xf715853b68c6c34deaf9ae539849a628286c375554485a52d336c743610c76ce,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Cristobal?,2026-12-01T00:00:00Z
+0xfe6886bf4a91bfa8c5cfe835231d573d1c226c9f93604142b6869f1720440c51,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Vicky?,2026-12-01T00:00:00Z
+0xd73c071b36cda92762e42e841b3d442ba98134bda6b80af931931883a38011de,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Josephine?,2026-12-01T00:00:00Z
+0x6b56082a5a450143d98f5714c5995b4c0894a6f6785c0d165fb6e829b323bacc,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Wilfred?,2026-12-01T00:00:00Z
+0x7ec05c69ea4192e8b42939e2230bce94c4eaa54ecc991be1c6782a12ee648c0a,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Leah?,2026-12-01T00:00:00Z
+0x107d2ea6cef1380057e88c6cb3cff62af593040446e5cc6d0e71dae964f2a1ab,Will there be 4-6 hurricanes during the Atlantic Hurricane Season in 2026?,2026-12-01T00:00:00Z
+0x1f352fb3adbdcee02eb24667be3f7d0de4eca1912fa4ae79637083f4b097ed40,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Marco?,2026-12-01T00:00:00Z
+0x27f0a089948ef815917a93e403efba30cc5a1e5edbb8fb19a23580120d290957,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Sally?,2026-12-01T00:00:00Z
+0x2a88061dfa3d7e97837ef2af4b45bd4ba6c14277125c9b63736a43db2a2f242c,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Teddy?,2026-12-01T00:00:00Z
+0x2ff10a4c7d20f47fe7d5d204e3cbba62d08e6625300f19bc923f60cae881ab55,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Kyle?,2026-12-01T00:00:00Z
+0x3a0bad79c464baa049824d7e85fb39fee573b373193e8162115666c89005d23b,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Fay?,2026-12-01T00:00:00Z
+0x468951cb0c98a4e430ee93c3df5e339f5399a26f2664ba07cd23f624915078f0,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Gonzalo?,2026-12-01T00:00:00Z
+0x49a55243809fc5e25a811dad111faa2b4bfdd2c0a24daf0cabcc547a923874b0,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Hanna?,2026-12-01T00:00:00Z
+0x2f9e47275583489f1b1d6016ad6338f35df32e4d69bfe123db2a6552cd544db7,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Omar?,2026-12-01T00:00:00Z
+0x4d507819d9e63dff3da2a730ab71d31a6393ef5ad00308a735df6b1ad245ad0f,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Isaias?,2026-12-01T00:00:00Z
+0x7b2a008955cfddf162169632397197ab5895b6d621f571f75e6cb389b32b7483,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Rene?,2026-12-01T00:00:00Z
+0x55c28eb3b7cdc0293fcf4a1853071f65823cf65c377c539a7fe5a7796e4864ef,Will the name of the first hurricane in the Atlantic for the 2026 Hurricane Season be Nana?,2026-12-01T00:00:00Z
+0x6943dc66c07d4451afe10e081c0950909f9f0519c5158d5450ee0630b20ab1e1,Will there be 1-3 hurricanes during the Atlantic Hurricane Season in 2026?,2026-12-01T00:00:00Z
+0x7ce6f0910f5b663658095df3145096ef47c7eea73afeecc997814d700c99763d,Will there be no hurricane in the Atlantic for the 2026 Hurricane Season?,2026-12-02T00:00:00Z
+0xac69bbc516cc8e1318b272293c6e64f8bb513e7a1a8526e09d4eb3d66661ad5c,Blue Origin New Glenn launch in 2026?,2026-12-31T00:00:00Z
+0xa4ddc18895cc7b14810283ef8f113939abffd3969c6a0e37f1897110c67e6f73,Hantavirus pandemic in 2026?,2026-12-31T00:00:00Z
+0xb5911777e97da4199e822f42667f3afd8dfb7f9356f4d0fd553861d2368a1be1,Ebola pandemic in 2026?,2026-12-31T00:00:00Z
+0x920c48beecfc25480ec850145abb5b87500f62dd0e819938956fa53e40a85df3,Will South Sudan have an Ebola case in 2026?,2026-12-31T00:00:00Z
+0x8b7e623e4e022e42c8768d5744ab02aaff02fd7cbe94ec3c71220b7847437c63,Will the United States have an Ebola case in 2026?,2026-12-31T00:00:00Z
+0x9ea737fd0e4f5af2683989969ceb69c5267aace447e19a6c07866eaa74818171,Did a ground support equipment failure cause the Blue Origin New Glenn explosion?,2026-12-31T00:00:00Z
+0x982efe53543542f518698a720824fddffe58c5d9f1e062eaae02639c3ea1c457,Will there be 4-6 hurricanes during the Atlantic Hurricane Season in 2026?,2026-12-31T00:00:00Z
+0xfe13a15ae92267939404f2e4ae92d2323f22041b7a9b5645fd378da995b6395e,Will Rwanda have an Ebola case in 2026?,2026-12-31T00:00:00Z
+0xf5e363c509ba54e783129d71356d96a1f290d862c2a7085ea3c661efc0393de6,Will Burundi have an Ebola case in 2026?,2026-12-31T00:00:00Z
+0xc40fb25ebf9650ba11f356ace366f95feeb7a52de5f4ac9e7afcaceccb74e2a8,Will there be 0 hurricanes during the Atlantic Hurricane Season in 2026?,2026-12-31T00:00:00Z
+0xdfbde56a503918b6ba8ab0179faf727e7a4807b2a3057cbf2222d8078e5f94f2,[arch] Megaquake by December 31?,2026-12-31T00:00:00Z
+0x2e21fe64387476eb9c96a33ba1a3cb35575e117c360e50ebc63b8dd123acd4a2,Etna eruption with VEI 2+ in 2026?,2026-12-31T00:00:00Z
+0x2bb2e08d5a567d3a0730bfbda09713e37c1162c4facc8cfa96c802105fba84c7,Will there be 1-3 hurricanes during the Atlantic Hurricane Season in 2026?,2026-12-31T00:00:00Z
+0x2c095712a4a358194db269e7e649c5310b2810e0e941ad888d15b7cfebfb134d,Will Kenya have an Ebola case in 2026?,2026-12-31T00:00:00Z
+0x332fd9a6d6b29c0ae215be15be3af035587cc4fda7110113f524671be316c9b2,Will no cause of the Blue Origin New Glenn explosion be announced by December 31?,2026-12-31T00:00:00Z
+0x30ee2f978ede1e7990134813769833dba9a60c4be94eb915f5c70c2aca3791f1,Did a software or control system failure cause the Blue Origin New Glenn explosion?,2026-12-31T00:00:00Z
+0x23cd3a5303b9d3c003513b74342f5ef11ca903b587906c945e5287327cf2c537,Will Somalia have an Ebola case in 2026?,2026-12-31T00:00:00Z
+0x3c11fb0a89202b349c12bfb4fccd1ec13157149e3170f1d44233c637798ef39b,Will China have an Ebola case in 2026?,2026-12-31T00:00:00Z
+0x011c2bd8de55a4110c30d32131566cbe47ae251fd3500cb53cb9bbf3168a7ad2,Will Uganda have an Ebola case in 2026?,2026-12-31T00:00:00Z
+0x06a73145f284d50972b58c9c0cfd6bdfa3b3b15a17221ac46bbb64048188580e,Will Ethiopia have an Ebola case in 2026?,2026-12-31T00:00:00Z
+0x1e8025e4367812ab204886e08e74527c4d05e2973d4fe24405530ad13ccb6024,Did an engine failure cause the Blue Origin New Glenn explosion?,2026-12-31T00:00:00Z
+0x1e756d04a620c1321c594ccdc9efb7e58f95ceb423298c0694d89609fb82e05e,Did another cause lead to the Blue Origin New Glenn explosion?,2026-12-31T00:00:00Z
+0x6d1b2efc4cfc2c85228355e3f928e6f43a4798698970b85d404c6434afe34d1b,Did a propellant leak cause the Blue Origin New Glenn explosion?,2026-12-31T00:00:00Z
+0x711c20a2e512644cc3c16ff6eeebb9037489b3d34da3dd0492ad6089db5ffd19,Will the Republic of the Congo have an Ebola case in 2026?,2026-12-31T00:00:00Z
+0x6fff56aff331381d502ac090085baf36e6c0cca886252151f2921d9043ab707a,Will Canada have an Ebola case in 2026?,2026-12-31T00:00:00Z
+0x6305154634e01ae21aaf565de8d942065e5d1ac3ab3326730a6ce53231acd36a,Will Nigeria have an Ebola case in 2026?,2026-12-31T00:00:00Z
+0x686238d981b158464762fe05778435c0ef440d01a160fc23334f789ac3408699,Did a valve or plumbing failure cause the Blue Origin New Glenn explosion?,2026-12-31T00:00:00Z
+0x79fc15b0985358050a2a2b0fa13cae8780b8366c6bb358559ca95c2ce18feb92,Will there be 7+ hurricanes during the Atlantic Hurricane Season in 2026?,2026-12-31T00:00:00Z
+0x5b334c510f1b9f4d7cf7ebf1eeeff9cb7b16106027d921bd4e2bf742110be02b,Hantavirus vaccine in 2026?,2026-12-31T00:00:00Z
+0x5c2679059440be3ae32f7127645cb9436a60981ee026f095cc7b9d05b1f4dc7b,Will India have an Ebola case in 2026?,2026-12-31T00:00:00Z
+0xe2d0b1c85b0d0983ee4f8c876c5a3156d9bc58b3236372308953849226c25a31,Will California experience a 7.0 or above magnitude earthquake in 2026?,2027-01-01T00:00:00Z
+0xe5ab5753b47d87b40c4d14a56f33fedef36adccf4f9fca844eedb35024dad150,Megaquake by December 31?,2027-01-01T00:00:00Z
+0x594753f5921304616f36fecd01677e5bf2f6f42a1093fa65e2cdff7193b43ffc,Will a hurricane make landfall in Hawaii before 2027?,2027-01-01T00:00:00Z
+0x4f7aa5dfb158d23fb33bba02b925735088436d7d8f37d6fdb306eb17753329c9,Will 2 or more hurricanes make landfall in the US in 2026?,2027-01-01T00:00:00Z
+0xdffc2e987e952fe39a266b8ddbc27d34f2c6ebcae3067e8af9a5bf3a141d22c3,Will there be a Super El Niño this winter (2026–27)?,2027-04-01T00:00:00Z
+0x00c2b79948cc4d65abd92dfe4342f87571d5963688805103a0add9c2adb47ff9,Will there be 16–18 inches of snow in NYC this weekend?,
+0x07daa8f5abc5d02a3d1785574032bbc889a5ff6f9388f1db4a11e57bc8267826,Will the highest temperature in New York City be between 55-56°F on May 9?,
+0x080e853f1d3ab32ea6a1ad9a889ed0b08370c2ef70b3bf63b7cd9b5ab199752c,Will the highest temperature in NYC be between 71-72°F on May 4?,
+0x09acdae4ba83fc6a0c1e7045179c0f5081a2db993b25ac20610ba38569365326,Will there be 10–12 inches of snow in NYC this weekend?,
+0x0a190519ef4fb10724d8aac4b5b1cf675d0b8dd7ec42052bf4f8cb88f2e11571,Will the highest temperature in New York City be between 58–59°F on May 22?,
+0x0c2056ec8ffe49d2699ea80c8e3f8b8c5b3d062444d5f7c8a904d11d47710c50,Will the highest temperature in Atlanta be between 60 °F or higher on December 5?,
+0x16765372c41124c7f575678743c413378251c93d775338592fd0b55fbf3d73d7,Will the highest temperature in London be between 44°F and 45°F on January 26?,
+0x16b0da9d748ae1fc3ca9ba3b3999b7c7c767fdc50aac0725bebddb074745d6ff,Will the highest temperature in London be between 73–74°F on May 29?,
+0x17ca45154cd130a1e90d97fcef4b49059555e83ef1c9345fba6cd4d570911bdc,Will the highest temperature in London be 55°F or higher on February 4?,
+0x184ab692f80d280b3585dd77fa55c55595fb48caa552acb5db3b4c017f9bc247,Will the highest temperature in New York City be between 56–57°F on May 22?,
+0x242f2994d03d3cffff4b007585e9ea1ae7511e508bcf3f470c671e6160a235e5,Will the highest temperature in NYC be between 64-65°F on May 4?,
+0x25b0a9f27bf3528acb10ef8ab27be3011e8f7f362fed77a91d0592cd712ca979,Will the highest temperature in New York City be between 53-54°F on May 9?,
+0x270ca90d3e82a2d9f6b78b34383cb6cd62564bd35bec8fb21862195d0713d55c,Will the highest temperature in NYC be 74°F or higher on May 4?,
+0x2e3e1273fc75f1c64fd5b3251118e31ac63488773d9cfef0caeb8f8f4cb194ca,Will the highest temperature in New York City be between 69–70°F on May 29?,
+0x2fc9fed439aecca00368817f84c6ad0259a940a1681a862f94d6c5ffa536d0bc,Will the highest temperature in NYC be between 73-74°F on May 4?,
+0x3101908142adc5268ecd060d8674c161bed9b74922ab70341b0b56675fb42f38,Will the highest temperature in NYC be 63°F or below on May 4?,
+0x318bf12efbc7c5e45565852abeb8371395974eb8e46a5cfae2f10544111d47f3,Will the highest temperature in Atlanta be between 54–55 °F on December 5?,
+0x328cc7a9a4a92c233f24908fea8a79568633168f181b0da6afff9a8dad7de1be,Will the highest temperature in New York City be between 59-60°F on May 9?,
+0x365f882c1df56dfc4025cc7c60a9215ef08a187628f0b12c25ee4352f164c79b,Will the highest temperature in London 41°F or below on January 26?,
+0x3f473900e36dfe97c133b1c85e98280a01de40c4e1af01b52367fbf50bc59f66,Will the highest temperature in London be 52°F or higher on January 26?,
+0x4155814fda05ea213f47002e1851b23a8d204b46cbe7886af174c76a8c3053d0,Will it rain in Central park on Friday May 29th 2026?,
+0x42e1284ebf8790b1e488b4864666fc630f7b5c80d31f93790498f193874da109,Will the highest temperature in London be between 69–70°F on May 29?,
+0x43918e12d2a10f6812a26be0f5c7c850be0521c2e7db027de96c1ad6302146d0,Will the highest temperature in New York City be 52°F or below on May 9?,
+0x473ce5024ddecb71d3e905c65a2c8954df09a5f74784b8eeeb107c0098c02b4b,Will the highest temperature in London be between 50°F and 51°F on January 26?,
+0x47755dc2904ed588e113e4a6ac158032faa07fe94470dbd3f74c1cae1cd55449,Will the highest temperature in Atlanta be 49 °F or below on December 5?,
+0x4f2236f9cddad4ec0f8d0062956b25361b69b020d14dfc2f865f309036430e97,Will the highest temperature in NYC be between 68-69°F on May 4?,
+0x544c1be744301b547e913f846108e788a8313d09a7778a66535c25087d199872,Will the highest temperature in New York City be between 57-58°F on May 9?,
+0x5535534b67f6c567fa65b8c2b2a86e81e451c68c51efeecb4b81723c899d7b05,Will the highest temperature in Atlanta be between 52–53 °F on December 5?,
+0x5ad8872083875b653b42fe618dbe247ec1a1167781e102d6c7f1c1d99978ca7f,Will the highest temperature in New York City be 60°F or higher on May 22?,
+0x68c7205f738352f210f1f0b2546c6aefe7569d309acd754e79ad00421d843146,Will the highest temperature in London be between 42°F and 43°F on January 26?,
+0x6d84f23b2727836f19cfdb978fe1cce9249a038734166b7597a301e6e788d568,Will the highest temperature in NYC be between 69-70°F on May 4?,
+0x6f6ca52f3c4ad77c536606b861140c38c1bfbe438e13f7fc62ccf707229a9666,Will the highest temperature in New York City be between 75–76°F on May 29?,
+0x740799d172cda69f8b9e3b1e9b1a22b196e05a9175a7e17b6a641e259102df0d,Will the highest temperature in Atlanta be between 50–51 °F on December 5?,
+0x7a195f8c539220d78315ce8f6224df9a246363df031ba77dd886e0d0fa6cf481,Will the highest temperature in NYC be between 66-67°F on May 4?,
+0x7b8804bc964f3b62bc8d13ee9c9a84b7d141723ea593c8ac6e47f53ee082cf5e,Will the highest temperature in NYC be between 33-34°F on February 10?,
+0x7ebf98e10578069bd0ee19d38b837c0254df97c9688fd183f8899abf253b2c33,Will the highest temperature in New York City be 77°F or higher on May 29?,
+0x833c4acb5213daf0ff29a5d21b0f563e6a14c1c85609392ca6a58860d2699d58,Will there be 8–10 inches of snow in NYC this weekend?,
+0x840ae4f464a509c0b66219f5c9b478d137bf3b33f46dce3aa2aa303d65a7c49e,Will there be less than 8 inches of snow in NYC this weekend?,
+0x8a653c7584014ea2524028423be7ee9f6ef84fad534e191d016c8e68f736d6d4,Will the highest temperature in Atlanta be between 58-59 °F on December 5?,
+0x98e2e58680f05e6e097e4ee3fe22d5ea2445264846b656d3aa989533269f9476,Will there be 12–14 inches of snow in NYC this weekend?,
+0xb147d0a5da2f7058bbd57e88b6d05b8159ac067bff9290d7e8cee561037570f8,Will the highest temperature in London be between 46°F and 47°F on January 26?,
+0xb529f79ff57cd6677c28fe61268f1de0e3ee19478ead97f6e4b1186b66b1b8bf,Will the highest temperature in New York City be between 71–72°F on May 29?,
+0xb616a59306803c4f01c6ffefba3f41331334cf3161db2f26511ce852a68b9573,Will the highest temperature in Atlanta be between 56–57 °F on December 5?,
+0xb876bda43e6743df3a166d27c7574173d11617e1ca159169d7e805fda85d8802,Will the highest temperature in London be between 67–68°F on May 29?,
+0xb95c70d3c668312f54e62d6615e248d3209388603f28d2ea88f718a7e45d2da1,Will the highest temperature in New York City be between 61-62°F on May 9?,
+0xbc7f6e4776eac6f3f79e08672d04421dfde5f910ff129939e5c0161e96edb009,Will the highest temperature in London be 66°F or below on May 29?,
+0xc643a48ad3718ab839e9c6d36863b42d9f42f19f73ac4d872c8c137b8abe0cfb,Will the highest temperature in NYC be between 59-60°F on April 6?,
+0xca0b9e80579bd966328b9b7a360a1eeeee0d2354559c0d42fbec40418939f736,Will it rain in Central park on Saturday May 30th 2026?,
+0xccb024850bbaec388514c38e5092d9b78f4ed2acdb55f6a3a02efc4bcb122246,Will the highest temperature in London be between 75–76°F on May 29?,
+0xcea8249cecf42de42a7b47dc93d061a16e7c9615a7477ac3bf145cbe266ce479,Will the highest temperature in New York City be 63°F or higher on May 9?,
+0xd2c8d449e51c5afb0077ec515e8081ee4ebd8f81c656cdff8d583ee2da854beb,Will there be 20 or more inches of snow in NYC this weekend?,
+0xd9fd4be718a4f38c724ede7ee673f60d69c18dd10f223b96d91d3f2a26c43572,Will the highest temperature in New York City be between 54–55°F on May 22?,
+0xdad7561050fb8f172667db9b513bfb87c6c504f613e104aee7ccccbeee8c8854,Will the highest temperature in London be 77°F or higher on May 29?,
+0xdb01f8f18492f6f48ee744fe5160077b4629ff06f1f03a5ebb3847d3949fba27,Will the highest temperature in NYC be between 77-78°F on April 22?,
+0xdb45692edd206bd691b7c014eddb0bc34a01311c4d5cbf72a532d31ae1153dd5,Will the highest temperature in New York City be 66°F or below on May 29?,
+0xe8bdc3f89896825d23dea64fdf47f0fe06c031cd7c9df2f6caa7adcada389c7f,Will there be 18–20 inches of snow in NYC this weekend?,
+0xe972388985a85de4253d47c61c22b6426d5ac35b8463c2b1989639923c1a583c,Will the highest temperature in London be between 71–72°F on May 29?,
+0xec47d96c1ec25907aa6bbe2636b2aa4ad7dd800164916e87699ba144be02071f,Will the highest temperature in London be between 48°F and 49°F on January 26?,
+0xeda3d227c185ffee574d11b3c62040940878ddb1ffc6930896fe1f8b212e02e7,Will there be 14–16 inches of snow in NYC this weekend?,
+0xfcd7c30c3e4c09a70bc0ba7880e8b01e61e36076934a766e5e6145b70530f72a,Will the highest temperature in New York City be between 67–68°F on May 29?,
+0xfd5060b6294a465ed27a52143ee264fcd22c1decb994d98d2faffc873000aec6,Will the highest temperature in New York City be between 73–74°F on May 29?,

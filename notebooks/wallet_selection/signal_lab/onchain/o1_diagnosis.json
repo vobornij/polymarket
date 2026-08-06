@@ -1,0 +1,53 @@
+{
+  "Weather": {
+    "tag": "Weather",
+    "n_markets": 96837,
+    "n_opening_buys": 3185125,
+    "n_wallets_total": 4092,
+    "n_wallets_selected": 65,
+    "wallet_selection_rate": 0.015884652981427175,
+    "selected_wallet_buy_roi_mean": 0.3719487936283201,
+    "rejected_wallet_buy_roi_mean": 0.2680748769694707,
+    "n_candidate_buys": 44067,
+    "market_concentration_p99_over_med": 9.0,
+    "top1pct_wallet_share_of_candidates": 0.13522590600676243,
+    "one_off_market_share": 0.7632626905295922,
+    "near_resolution_price_share": 0.43331744843079856,
+    "price_outcome_ic": 0.5519537027053942,
+    "lead_h_outcome_ic": 0.004854212353724056
+  },
+  "Finance": {
+    "tag": "Finance",
+    "n_markets": 36574,
+    "n_opening_buys": 596383,
+    "n_wallets_total": 13722,
+    "n_wallets_selected": 32,
+    "wallet_selection_rate": 0.0023320215711995335,
+    "selected_wallet_buy_roi_mean": 0.28865976994424597,
+    "rejected_wallet_buy_roi_mean": 0.40036874530287325,
+    "n_candidate_buys": 9774,
+    "market_concentration_p99_over_med": 9.0,
+    "top1pct_wallet_share_of_candidates": 0.16779210149375895,
+    "one_off_market_share": 0.8571906914448351,
+    "near_resolution_price_share": 0.35215878862287703,
+    "price_outcome_ic": 0.6147565693492898,
+    "lead_h_outcome_ic": 0.20186336076865904
+  },
+  "Politics": {
+    "tag": "Politics",
+    "n_markets": 66598,
+    "n_opening_buys": 1896288,
+    "n_wallets_total": 34034,
+    "n_wallets_selected": 296,
+    "wallet_selection_rate": 0.008697185167773402,
+    "selected_wallet_buy_roi_mean": 0.2997815843992845,
+    "rejected_wallet_buy_roi_mean": 1.500508808183392,
+    "n_candidate_buys": 92311,
+    "market_concentration_p99_over_med": 49.01500000000033,
+    "top1pct_wallet_share_of_candidates": 0.10530705983035608,
+    "one_off_market_share": 0.4908531372884254,
+    "near_resolution_price_share": 0.2208729187204125,
+    "price_outcome_ic": 0.6236779116645833,
+    "lead_h_outcome_ic": 0.019705522655249122
+  }
+}

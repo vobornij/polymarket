@@ -13,6 +13,19 @@ Not the goal:
 - heavy processing
 - tuning on test
 
+## Subprojects
+
+- `strategies/` — copy-trade signal strategies (existing).
+- `weather_fv/` — Track W: weather forecast fair value (see PLAN.md).
+- `cross_market/` — Track X: cross-market consistency (see PLAN.md).
+- `onchain/` — Track O: bounded Finance/Politics re-validation
+  (see PLAN.md).
+
+For new work, prefer the declarative `SignalStrategy` protocol in
+`strategies/base.py` and the canonical helpers in `signal_lib.py`.
+Each step ships a CLI script and a sibling `verify_<step>.py`; run
+`python -m signal_lab.verify_all` to validate the workspace.
+
 ## Main Files
 
 - `stage1.py`: functional pipeline — load data, build the candidate universe, run strategies, evaluate signals

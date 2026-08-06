@@ -40,9 +40,10 @@ except ImportError:
 _HERE = Path(__file__).resolve().parent
 DEFAULT_TRADES_DIR = (_HERE / "../../data/polygon_trades_processed").resolve()
 DEFAULT_WORKSPACE_DIR = (_HERE / "../../data/trade_signals_workspace_v2").resolve()
-# DEFAULT_TAGS = {"Politics"}
-# DEFAULT_TAGS = {"Finance"}
-DEFAULT_TAGS = {"Politics", "Geopolitics", "Elections"}
+DEFAULT_TAGS = {"Politics"}
+# DEFAULT_TAGS = {"Science"}
+# DEFAULT_TAGS = {"Celebrities", "Culture", "Music", "Movies", "Awards", "AI", "Business", "Trump"}
+# DEFAULT_TAGS = {"Politics", "Geopolitics", "Elections"}
 
 # DEFAULT_TAGS = {"Weather"}
 

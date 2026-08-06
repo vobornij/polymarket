@@ -1,0 +1,12 @@
+{
+  "n_markets": 96287,
+  "n_with_resolution_source": 94714,
+  "n_with_station_icao": 69615,
+  "n_with_station": 25099,
+  "city_count": 55,
+  "src_distribution": {
+    "Wunderground": 91865,
+    "NOAA": 2849,
+    "null": 1573
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "tags": [
+    "Weather",
+    "Finance",
+    "Politics"
+  ],
+  "metrics": [
+    "tag",
+    "n_markets",
+    "n_opening_buys",
+    "n_wallets_total",
+    "n_wallets_selected",
+    "wallet_selection_rate",
+    "selected_wallet_buy_roi_mean",
+    "rejected_wallet_buy_roi_mean",
+    "n_candidate_buys",
+    "market_concentration_p99_over_med",
+    "top1pct_wallet_share_of_candidates",
+    "one_off_market_share",
+    "near_resolution_price_share",
+    "price_outcome_ic",
+    "lead_h_outcome_ic"
+  ]
+}
