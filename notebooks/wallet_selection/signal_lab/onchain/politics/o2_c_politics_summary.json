@@ -1,0 +1,72 @@
+{
+  "tag": "Politics",
+  "n_rules": 6,
+  "rules": [
+    {
+      "rule": "price_lt_0p5_lead_gt_24h",
+      "IC_train": -0.026359192097576794,
+      "IC_val": -0.036659512193863215,
+      "IC_test": 0.11284228659687079,
+      "val_fire_rate": 0.43253960444750567,
+      "test_fire_rate": 0.36712334234710675,
+      "val_fires": 87918,
+      "test_fires": 36792,
+      "same_sign_val_test": false
+    },
+    {
+      "rule": "price_lt_0p5_lead_gt_72h",
+      "IC_train": -0.006242618420658731,
+      "IC_val": -0.024612015752260717,
+      "IC_test": 0.08927204439257216,
+      "val_fire_rate": 0.29791892157827415,
+      "test_fire_rate": 0.25110510192881447,
+      "val_fires": 60555,
+      "test_fires": 25165,
+      "same_sign_val_test": false
+    },
+    {
+      "rule": "price_lt_0p1",
+      "IC_train": -0.009221045315872083,
+      "IC_val": 0.11659367649250399,
+      "IC_test": 0.18442988329019272,
+      "val_fire_rate": 0.24350585457050083,
+      "test_fire_rate": 0.24968817665665505,
+      "val_fires": 49495,
+      "test_fires": 25023,
+      "same_sign_val_test": true
+    },
+    {
+      "rule": "price_gt_0p9",
+      "IC_train": -0.02312593011316755,
+      "IC_val": 0.03298552701177831,
+      "IC_test": 0.008945362275546861,
+      "val_fire_rate": 0.17200629735314377,
+      "test_fire_rate": 0.16136982747438058,
+      "val_fires": 34962,
+      "test_fires": 16172,
+      "same_sign_val_test": true
+    },
+    {
+      "rule": "price_mid_lead_gt_24h",
+      "IC_train": 0.046457595597126,
+      "IC_val": -0.024965577092946608,
+      "IC_test": -0.06691149843587502,
+      "val_fire_rate": 0.18372035816196006,
+      "test_fire_rate": 0.1683347136713332,
+      "val_fires": 37343,
+      "test_fires": 16870,
+      "same_sign_val_test": true
+    },
+    {
+      "rule": "recurring_market",
+      "IC_train": -0.007623520188955519,
+      "IC_val": -0.04797923204857604,
+      "IC_test": 0.021526114037824375,
+      "val_fire_rate": 0.9398996359342714,
+      "test_fire_rate": 0.9441412135665606,
+      "val_fires": 191044,
+      "test_fires": 94619,
+      "same_sign_val_test": false
+    }
+  ]
+}

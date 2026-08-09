@@ -1,0 +1,61 @@
+{
+  "tag": "Finance",
+  "n_rules": 5,
+  "rules": [
+    {
+      "rule": "price_lt_0p5_lead_gt_24h",
+      "IC_train": 0.008609756373594677,
+      "IC_val": 0.021367819888702674,
+      "IC_test": 0.002438967366316011,
+      "val_fire_rate": 0.26953193803080083,
+      "test_fire_rate": 0.2102641261773269,
+      "val_fires": 140783,
+      "test_fires": 60231,
+      "same_sign_val_test": true
+    },
+    {
+      "rule": "price_lt_0p5_lead_gt_72h",
+      "IC_train": 0.012473829624758946,
+      "IC_val": 0.0014544328760081869,
+      "IC_test": -0.020514475349827522,
+      "val_fire_rate": 0.1868476271433057,
+      "test_fire_rate": 0.14752804987886362,
+      "val_fires": 97595,
+      "test_fires": 42260,
+      "same_sign_val_test": false
+    },
+    {
+      "rule": "price_lt_0p1",
+      "IC_train": 0.032910511124032996,
+      "IC_val": -0.03790263473164748,
+      "IC_test": 0.11211797658653615,
+      "val_fire_rate": 0.33828428331840005,
+      "test_fire_rate": 0.3403059479008846,
+      "val_fires": 176694,
+      "test_fires": 97482,
+      "same_sign_val_test": false
+    },
+    {
+      "rule": "price_gt_0p9",
+      "IC_train": 0.018072509312956793,
+      "IC_val": 0.07912933190544244,
+      "IC_test": 0.05256679389824873,
+      "val_fire_rate": 0.15606405219748662,
+      "test_fire_rate": 0.12745152799402348,
+      "val_fires": 81516,
+      "test_fires": 36509,
+      "same_sign_val_test": true
+    },
+    {
+      "rule": "price_mid_lead_gt_24h",
+      "IC_train": -0.0068524541460303744,
+      "IC_val": 0.047262167934867164,
+      "IC_test": 0.009309585095697844,
+      "val_fire_rate": 0.10929423116686195,
+      "test_fire_rate": 0.11091833243731979,
+      "val_fires": 57087,
+      "test_fires": 31773,
+      "same_sign_val_test": true
+    }
+  ]
+}

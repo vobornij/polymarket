@@ -1,0 +1,71 @@
+{
+  "tag": "Politics",
+  "n_candidates": 15,
+  "n_wallets_selected": 22,
+  "split_ic": [
+    {
+      "split": "train",
+      "scheme": "equal",
+      "IC_target": 0.2705486325961025,
+      "IC_pnl_res": 0.20624280423852798,
+      "spearman_price": 0.16324544485590675
+    },
+    {
+      "split": "train",
+      "scheme": "ic_weighted",
+      "IC_target": 0.3208950032465139,
+      "IC_pnl_res": 0.22986441269778288,
+      "spearman_price": 0.2434480136120002
+    },
+    {
+      "split": "train",
+      "scheme": "shrinkage_markowitz",
+      "IC_target": 0.41603074265107154,
+      "IC_pnl_res": 0.2892440226874936,
+      "spearman_price": 0.3648164435608721
+    },
+    {
+      "split": "val",
+      "scheme": "equal",
+      "IC_target": -0.10422622605174124,
+      "IC_pnl_res": -0.14585480773947143,
+      "spearman_price": 0.07272785511951226
+    },
+    {
+      "split": "val",
+      "scheme": "ic_weighted",
+      "IC_target": -0.08631429412678063,
+      "IC_pnl_res": -0.13465604058683467,
+      "spearman_price": 0.11192723184231518
+    },
+    {
+      "split": "val",
+      "scheme": "shrinkage_markowitz",
+      "IC_target": -0.05584399723005296,
+      "IC_pnl_res": -0.10176919961830971,
+      "spearman_price": 0.14108426096508464
+    },
+    {
+      "split": "test",
+      "scheme": "equal",
+      "IC_target": 0.3829083923867906,
+      "IC_pnl_res": 0.4061880443106484,
+      "spearman_price": -0.029201704578468195
+    },
+    {
+      "split": "test",
+      "scheme": "ic_weighted",
+      "IC_target": 0.38635799733418413,
+      "IC_pnl_res": 0.4078675405048995,
+      "spearman_price": -0.04720183498144813
+    },
+    {
+      "split": "test",
+      "scheme": "shrinkage_markowitz",
+      "IC_target": 0.4462639283741835,
+      "IC_pnl_res": 0.5115987901311658,
+      "spearman_price": -0.2282227813442643
+    }
+  ],
+  "best_scheme_test_pnl_res_ic": 0.5115987901311658
+}

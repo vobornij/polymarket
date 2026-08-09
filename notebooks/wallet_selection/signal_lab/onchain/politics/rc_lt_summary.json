@@ -1,0 +1,54 @@
+{
+  "split": {
+    "train_end": "2025-06-01",
+    "val_end": null,
+    "test_start": "2025-06-01"
+  },
+  "budget": 10000.0,
+  "results": {
+    "L30_B_equal_p<0.1": {
+      "net_pnl": 121308.50005127666,
+      "peak_used": 9999.997522762149,
+      "mean_used": 2205.2129843496814,
+      "sharpe": 0.526,
+      "trades": 29743,
+      "max_dd": 19039.83028594531
+    },
+    "L60_B_equal_p<0.1": {
+      "net_pnl": 181703.76071700355,
+      "peak_used": 9999.999968145872,
+      "mean_used": 2726.349775246674,
+      "sharpe": 0.535,
+      "trades": 32743,
+      "max_dd": 18423.461978646974
+    },
+    "L90_B_equal_p<0.1": {
+      "net_pnl": 82148.66114683561,
+      "peak_used": 9999.99926448373,
+      "mean_used": 2257.5363034755246,
+      "sharpe": 0.395,
+      "trades": 33640,
+      "max_dd": 17718.82040441365
+    },
+    "L60_B_equal_none": {
+      "net_pnl": 17610.06148425309,
+      "peak_used": 9999.999997643105,
+      "mean_used": 9725.024746665858,
+      "sharpe": 0.428,
+      "trades": 152969,
+      "max_dd": 5942.812974957553
+    }
+  },
+  "top10_wallets": [
+    "0x9ad091ca2e8f1bd69f27662edcb49dceeaa5bf3d",
+    "0xff7ca9cd180d33119e653e3eb50555a3e2ccb233",
+    "0xcf6a714618a328c608a1c70cb62a31a6bef3f9d0",
+    "0xad96914d7762dac84ebbabafe366ae8ff24dd498",
+    "0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b",
+    "0x942a9306a554ab0b94d079dd60a6df7ad702aedc",
+    "0x1e55408f217f58facdf1d663c74cfa7f55e9e3e2",
+    "0x6d9fc316c3b8377060a44b852ba664adbfd59790",
+    "0xbb39ba863319281427a482c8714ffdf69cb7ee8a",
+    "0x58820cfc9b65f8b3b87bf8a79d8c6d79b1ba55a2"
+  ]
+}

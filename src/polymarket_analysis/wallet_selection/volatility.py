@@ -128,8 +128,8 @@ def _wallet_metrics_from_buckets(buckets: pd.DataFrame) -> pd.DataFrame:
     res["sell_copyable_quantity"] = side_sum("copyable_qty", "SELL")
     res["sell_copyable_pnl"] = side_sum("copyable_pnl", "SELL")
 
-    res["buy_roi"] = np.where(res["buy_quantity"] > 0, res["buy_pnl"] / res["buy_quantity"], 0.0)
-    res["sell_roi"] = np.where(res["sell_quantity"] > 0, res["sell_pnl"] / res["sell_quantity"], 0.0)
+    res["buy_roi"] = np.where(res["buy_quantity"] > 0, res["buy_pnl"] / res["buy_notional"], 0.0)
+    res["sell_roi"] = np.where(res["sell_quantity"] > 0, res["sell_pnl"] / res["sell_notional"], 0.0)
     res["buy_copyable_notional"] = np.where(
         res["buy_quantity"] > 0,
         res["buy_notional"] * (res["buy_copyable_quantity"] / res["buy_quantity"]),

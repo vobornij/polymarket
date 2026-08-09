@@ -56,7 +56,7 @@ OUT_DIR = NB_DIR / "signal_lab"
 import numpy as np
 import pandas as pd
 
-from lib import DEFAULT_TAGS
+from lib import DEFAULT_SPLIT, DEFAULT_TAGS
 from signal_lab.filters import COPY_DEFAULT
 from signal_lab.signal_lib import spearman_rho
 from signal_lab.sizing import (
@@ -81,13 +81,14 @@ pd.set_option("display.float_format", lambda v: f"{v:.4f}")
 
 BUDGET = 10_000.0
 COST_SEL = 10.0
+MAX_LEAD_DAYS = 30  # keep only trades within this many days of contract resolution
 ALPHA_MAX_GRID = (2.0, 4.0, 8.0)
 TIER_GRID = [(nt, am, amin) for nt in (3, 4, 5) for am in ALPHA_MAX_GRID for amin in (0.0, 0.25)]
 UNIFORM_K_GRID = (0.5, 1.0, 2.0, 4.0)
 """
 
 CELL_LOAD_DATA = """\
-df_full, df_train, df_val, df_test, wallet_metrics, hold_metrics = load_stage1_data()
+df_full, df_train, df_val, df_test, wallet_metrics, hold_metrics = load_stage1_data(tags=DEFAULT_TAGS, **DEFAULT_SPLIT, max_lead_days=MAX_LEAD_DAYS)
 print(f"df_full: {len(df_full):,}")
 print(f"  train: {len(df_train):,}  val: {len(df_val):,}  test: {len(df_test):,}")
 """
@@ -98,7 +99,7 @@ print(f"copy_default wallets: {len(wallets)}")
 """
 
 CELL_BUILD_SPLITS = """\
-splits = candidate_splits_for(df_full, wallets)
+splits = candidate_splits_for(df_full, wallets, **DEFAULT_SPLIT)
 splits = attach_depth_cap(splits)
 del df_full, df_train, df_val, df_test
 
@@ -294,6 +295,75 @@ with open(out_path, "w") as f:
 print(f"Saved stage 1 scaled result -> {out_path.resolve()}")
 """
 
+CELL_EXPOSURE_PNL = """\
+import plotly.graph_objects as go
+
+test = splits["test"].copy()
+alpha_map = schemes[best_name][1]
+test["alpha_w"] = test["wallet"].map(alpha_map).fillna(1.0)
+test["qty"] = np.clip(test["alpha_w"] * test["copyable_qty"], 0.0, test["bucket_avail_copy_qty"])
+test["copy_pnl"] = test["copyable_pnl"] / test["copyable_qty"].replace(0, np.nan) * test["qty"]
+
+test["res_ts"] = pd.to_datetime(test["last_condition_trade_ts"], utc=True, errors="coerce")
+window_end = test["dt"].max()
+resolved = test["res_ts"] <= window_end
+print(
+    f"test trades: {len(test):,}  contracts: {test['condition_id'].nunique():,}  "
+    f"resolved by {window_end:%Y-%m-%d}: {int(resolved.sum()):,} trades "
+    f"({test.loc[resolved, 'condition_id'].nunique():,} contracts)"
+)
+
+open_ev = pd.DataFrame({
+    "ev_dt": test["dt"],
+    "exposure_delta": test["qty"] * test["price"],
+})
+close_ev = pd.DataFrame({
+    "ev_dt": test.loc[resolved, "res_ts"],
+    "exposure_delta": -(test.loc[resolved, "qty"] * test.loc[resolved, "price"]),
+})
+events = (
+    pd.concat([open_ev, close_ev], ignore_index=True)
+    .sort_values("ev_dt")
+    .reset_index(drop=True)
+)
+events["exposure"] = events["exposure_delta"].cumsum()
+
+pnl_trade = (
+    test[["dt", "copy_pnl"]]
+    .rename(columns={"dt": "ev_dt"})
+    .sort_values("ev_dt")
+    .reset_index(drop=True)
+)
+pnl_trade["cum_pnl"] = pnl_trade["copy_pnl"].cumsum()
+
+pnl_res = (
+    test.loc[resolved, ["res_ts", "copy_pnl"]]
+    .rename(columns={"res_ts": "ev_dt"})
+    .sort_values("ev_dt")
+    .reset_index(drop=True)
+)
+pnl_res["cum_pnl"] = pnl_res["copy_pnl"].cumsum()
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=events["ev_dt"], y=events["exposure"], mode="lines", name="exposure"))
+fig.add_trace(go.Scatter(
+    x=pnl_trade["ev_dt"], y=pnl_trade["cum_pnl"], mode="lines",
+    name="cum copyable pnl (trade time)",
+))
+fig.add_trace(go.Scatter(
+    x=pnl_res["ev_dt"], y=pnl_res["cum_pnl"], mode="lines", line=dict(dash="dash"),
+    name="cum copyable pnl (resolution time)",
+))
+fig.update_layout(
+    title=f"Test-period exposure & copyable PnL over time — {best_name}",
+    xaxis_title="Time",
+    yaxis_title="USDC",
+    template="plotly_white",
+    legend=dict(orientation="h", yanchor="bottom", y=1.02),
+)
+fig.show(renderer="browser")
+"""
+
 CELL_PRICE_SCALE_MD = """\
 ## Price-scaling fill experiment (exploratory)
 
@@ -398,6 +468,8 @@ Copy qty is capped by the reconstructed share-depth ``bucket_avail_copy_qty``.
     code(CELL_TEST),
     md("## Robustness: cost sweep + bootstrap CI\n\nCost sweep (0/10/30bps) + 7-day block-bootstrap Sharpe CI on test."),
     code(CELL_ROBUSTNESS),
+    md("## Test-period exposure & PnL over time\n\nExposure opens at each BUY (`qty = alpha_w * copyable_qty` capped by `bucket_avail_copy_qty`, at `price`) and closes at contract resolution `last_condition_trade_ts` — only for contracts resolved within the test window, so unresolved exposure stays open. PnL shown twice: attributed at trade time (`dt`) and at contract resolution time (`last_condition_trade_ts`, resolved contracts only)."),
+    code(CELL_EXPOSURE_PNL),
     md("## Per-wallet contributions\n\nTrain alphas vs forward (test) wallet stats."),
     code(CELL_CONTRIB),
     md("## Save stage 1 result"),

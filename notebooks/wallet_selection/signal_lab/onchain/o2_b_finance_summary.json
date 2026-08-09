@@ -1,0 +1,133 @@
+{
+  "tag": "Finance",
+  "n_candidates": 15,
+  "n_signals": 15,
+  "split_ic": [
+    {
+      "split": "train",
+      "scheme": "equal",
+      "IC_target": 0.1424636069570065,
+      "IC_pnl_res": 0.004182435623177636,
+      "spearman_price": 0.3603490785988417
+    },
+    {
+      "split": "train",
+      "scheme": "ic_weighted",
+      "IC_target": 0.17918954382663102,
+      "IC_pnl_res": 0.011265244452720063,
+      "spearman_price": 0.4251300911958826
+    },
+    {
+      "split": "train",
+      "scheme": "shrinkage_markowitz",
+      "IC_target": 0.19310877429383286,
+      "IC_pnl_res": 0.007327743377165896,
+      "spearman_price": 0.44143603672776194
+    },
+    {
+      "split": "val",
+      "scheme": "equal",
+      "IC_target": 0.08872781683136866,
+      "IC_pnl_res": -0.02072080190205838,
+      "spearman_price": 0.31922530617547384
+    },
+    {
+      "split": "val",
+      "scheme": "ic_weighted",
+      "IC_target": 0.15300819772659074,
+      "IC_pnl_res": 0.0077599254313517425,
+      "spearman_price": 0.41933196882598944
+    },
+    {
+      "split": "val",
+      "scheme": "shrinkage_markowitz",
+      "IC_target": 0.15583345432252257,
+      "IC_pnl_res": 0.016240321899202166,
+      "spearman_price": 0.3883809627532859
+    },
+    {
+      "split": "test",
+      "scheme": "equal",
+      "IC_target": 0.07295341037423124,
+      "IC_pnl_res": -0.038700291266804535,
+      "spearman_price": 0.29275002292673424
+    },
+    {
+      "split": "test",
+      "scheme": "ic_weighted",
+      "IC_target": 0.10732125276018119,
+      "IC_pnl_res": -0.02841185287516429,
+      "spearman_price": 0.34322048255024623
+    },
+    {
+      "split": "test",
+      "scheme": "shrinkage_markowitz",
+      "IC_target": 0.11622821253721881,
+      "IC_pnl_res": 0.0013748669447983094,
+      "spearman_price": 0.2644638976225464
+    }
+  ],
+  "best_composite_test_pnl_res_ic": 0.0013748669447983094,
+  "best_signals_by_val_ic": [
+    {
+      "signal": "sig_uwl_opp_whale",
+      "IC_train": 0.1393179113933733,
+      "IC_val": 0.1372390832261444,
+      "IC_test": 0.049373998362834286
+    },
+    {
+      "signal": "sig_uwl_opp_retail",
+      "IC_train": 0.13897003951731854,
+      "IC_val": 0.12439476695749284,
+      "IC_test": 0.0949972706623904
+    },
+    {
+      "signal": "sig_val_opp_gambler",
+      "IC_train": 0.08393389793689365,
+      "IC_val": 0.10418355187047805,
+      "IC_test": -0.020114412829881124
+    },
+    {
+      "signal": "sig_uwl_opp_gambler",
+      "IC_train": 0.06607889915526036,
+      "IC_val": 0.06024811336231139,
+      "IC_test": 0.05333888436959003
+    },
+    {
+      "signal": "sig_val_opp_retail",
+      "IC_train": 0.06219882761142445,
+      "IC_val": 0.05383708358057637,
+      "IC_test": 0.05701012350012525
+    },
+    {
+      "signal": "sig_val_opp_flipper",
+      "IC_train": -0.006708982812060182,
+      "IC_val": -0.03358137712566392,
+      "IC_test": -0.03006109172198072
+    },
+    {
+      "signal": "sig_fsf_sell_6h_both_sides",
+      "IC_train": 0.0011154568679447743,
+      "IC_val": -0.029112297640136064,
+      "IC_test": -0.020067673623712576
+    },
+    {
+      "signal": "sig_fsf_sell_6h_retail",
+      "IC_train": 0.02024514177157724,
+      "IC_val": -0.02868129489398178,
+      "IC_test": 0.043872624891058115
+    },
+    {
+      "signal": "sig_fsf_sell_6h_overseller",
+      "IC_train": 0.021487116736754873,
+      "IC_val": -0.023442138455557544,
+      "IC_test": 0.015261935006724153
+    },
+    {
+      "signal": "sig_val_opp_both_sides",
+      "IC_train": -0.01602779263889718,
+      "IC_val": -0.02096552241807569,
+      "IC_test": -0.013980493702007388
+    }
+  ]
+}

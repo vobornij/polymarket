@@ -1,0 +1,71 @@
+{
+  "tag": "Finance",
+  "n_candidates": 15,
+  "n_wallets_selected": 11,
+  "split_ic": [
+    {
+      "split": "train",
+      "scheme": "equal",
+      "IC_target": 0.17520936158943914,
+      "IC_pnl_res": 0.14576591241547265,
+      "spearman_price": 0.1387120166145302
+    },
+    {
+      "split": "train",
+      "scheme": "ic_weighted",
+      "IC_target": 0.20534457513772095,
+      "IC_pnl_res": 0.15960553302425778,
+      "spearman_price": 0.17950112453133665
+    },
+    {
+      "split": "train",
+      "scheme": "shrinkage_markowitz",
+      "IC_target": 0.30067906729778526,
+      "IC_pnl_res": 0.20940507060447616,
+      "spearman_price": 0.2945138284451957
+    },
+    {
+      "split": "val",
+      "scheme": "equal",
+      "IC_target": -0.0828100797997231,
+      "IC_pnl_res": 0.05217004888616834,
+      "spearman_price": -0.29596258129093145
+    },
+    {
+      "split": "val",
+      "scheme": "ic_weighted",
+      "IC_target": -0.06327008969264852,
+      "IC_pnl_res": 0.056740190783734046,
+      "spearman_price": -0.25554540680019916
+    },
+    {
+      "split": "val",
+      "scheme": "shrinkage_markowitz",
+      "IC_target": 0.10326333563205846,
+      "IC_pnl_res": 0.1252397145104902,
+      "spearman_price": 0.029134569480891548
+    },
+    {
+      "split": "test",
+      "scheme": "equal",
+      "IC_target": -0.03134150284738967,
+      "IC_pnl_res": -0.02885383836909928,
+      "spearman_price": 0.030802261317550657
+    },
+    {
+      "split": "test",
+      "scheme": "ic_weighted",
+      "IC_target": 0.03322887436494039,
+      "IC_pnl_res": 0.00601288177323385,
+      "spearman_price": 0.0787274282760457
+    },
+    {
+      "split": "test",
+      "scheme": "shrinkage_markowitz",
+      "IC_target": 0.0677819585134999,
+      "IC_pnl_res": -0.01816900276440153,
+      "spearman_price": 0.22313546055846625
+    }
+  ],
+  "best_scheme_test_pnl_res_ic": 0.00601288177323385
+}

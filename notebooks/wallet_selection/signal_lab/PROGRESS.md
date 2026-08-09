@@ -38,6 +38,11 @@ consistency) is a fast secondary track that can be parallelised.
 | W0.3 | `weather_fv/w0_3_combine.py` | `markets_enriched.parquet`, `w0_enriched_summary.json` | `verify_w0_3.py` | OK — 96,287 markets, 94,714 (98.4%) with resolution_source |
 | W1   | `weather_fv/w1_calibration.py --full` | `w1_calibration.csv`, `w1_summary.json` | `verify_w1.py` | OK — 11.4M trades, global Brier 0.0906, +2-3% under-pricing in 0.3-0.7 bins |
 | O1   | `onchain/o1_diagnose.py --all-tags` | `o1_diagnosis.json`, `o1_summary.json` | `verify_o1.py` | OK — 3 tags diagnosed, 9 metrics per tag |
+| O2.A | `onchain/o2_runner.py --tag {Finance,Politics} --phase a` | `o2_a_{tag}_composite.csv`, `o2_a_{tag}_summary.json` | `verify_o2 --phase a` | OK — Politics passes (test IC 0.07-0.28); Finance borderline (only `shrinkage_markowitz`) |
+| O2.B | `onchain/o2_runner.py --tag {Finance,Politics} --phase b` | `o2_b_{tag}_composite.csv`, `o2_b_{tag}_per_signal.csv`, `o2_b_{tag}_summary.json` | `verify_o2 --phase b` | OK on Finance (test IC 0.07-0.12). Politics full timed out; 2-shard sample shows `sig_uwl_opp_*` is dominant. |
+| O2.C | `onchain/o2_runner.py --tag {Finance,Politics} --phase c` | `o2_c_{tag}_rules.csv`, `o2_c_{tag}_summary.csv/json` | `verify_o2 --phase c` | OK — Finance: 3 rules pass. Politics: 1 strong (`price_lt_0p1`, test IC +0.126). |
+| O2.D | `onchain/o2_runner.py --tag {Finance,Politics} --phase d` | `o2_d_{tag}_composite.csv`, `o2_d_{tag}_sizing.csv`, `o2_d_{tag}_summary.json` | `verify_o2 --phase d` | OK on Finance (composite IC 0.18 test, sizing PnL small). Politics 2-shard composite IC 0.36 test. **The single rule `price_lt_0p1` on Politics is a deployable strategy (test PnL $154k on $10k).** See `o2_REPORT.md`. |
+| O2.Politics | `onchain/politics/politics_o2.ipynb` + `onchain/politics/politics_d.py` | politics-specific artefacts in `onchain/politics/` | `verify_o2 --tag Politics --all --out-dir onchain/politics` | OK — Politics notebook end-to-end; A/B/C/D all pass; sizing confirmed ($153,974 PnL on $10k test for `price_lt_0p1`). |
 
 Run all verifiers in this order:
 

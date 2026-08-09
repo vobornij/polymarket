@@ -35,6 +35,7 @@ from lib import (
     compute_opening_metrics,
     load_trades,
     split_data,
+    split_data_at_dates,
 )
 from polymarket_analysis.wallet_selection.volatility import compute_wallet_metrics
 
@@ -164,14 +165,42 @@ def load_stage1_data(
     *,
     tags: set[str] | None = DEFAULT_TAGS,
     max_shards: int | None = None,
+    train_end: str | None = None,
+    val_end: str | None = None,
+    test_start: str | None = None,
+    max_lead_days: int | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Load trades and compute the train-period metrics.
 
     Returns a plain tuple
     ``(df_full, df_train, df_val, df_test, wallet_metrics, hold_metrics)``.
+
+    Pass ``train_end``/``val_end``/``test_start`` (ISO dates, UTC) to use
+    :func:`signal_lab.lib.split_data_at_dates`; otherwise the default
+    chronological 40/30/30 split is used.
+
+    Pass ``max_lead_days`` to keep only trades within that many days of
+    contract resolution (``last_condition_trade_ts - dt <= max_lead_days``);
+    ``None`` keeps all trades.  Applied before splitting so splits and
+    train-period wallet metrics are computed on the same filtered universe.
     """
     df_full = compute_copyable_notional(load_trades(tags=tags, max_shards=max_shards))
-    df_train, df_val, df_test = split_data(df_full, method="chronological")
+    if max_lead_days is not None:
+        lead = (
+            pd.to_datetime(df_full["last_condition_trade_ts"], utc=True, errors="coerce")
+            - df_full["dt"]
+        )
+        df_full = df_full[lead <= pd.Timedelta(days=max_lead_days)].copy()
+        print(
+            f"Lead filter (<= {max_lead_days}d before resolution): "
+            f"{len(df_full):,} trades"
+        )
+    if train_end is not None or val_end is not None or test_start is not None:
+        df_train, df_val, df_test = split_data_at_dates(
+            df_full, train_end=train_end, val_end=val_end, test_start=test_start,
+        )
+    else:
+        df_train, df_val, df_test = split_data(df_full, method="chronological")
     wallet_metrics = _attach_copy_wallet_metrics(df_train)
     hold_metrics = compute_hold_time_metrics(df_train)
     return df_full, df_train, df_val, df_test, wallet_metrics, hold_metrics
@@ -180,6 +209,10 @@ def load_stage1_data(
 def candidate_splits_for(
     df_full: pd.DataFrame,
     wallets: Iterable[str],
+    *,
+    train_end: str | None = None,
+    val_end: str | None = None,
+    test_start: str | None = None,
 ) -> dict[str, pd.DataFrame]:
     """BUY trades of ``wallets`` split chronologically with train-fitted ``roi_res``.
 
@@ -187,12 +220,22 @@ def candidate_splits_for(
     market (any wallet, any side).  ``end_date_iso`` is only a nominal midnight
     date, while markets actually keep trading into the next day, so capital in
     a sizing backtest must be released at ``market_close``, not ``end_date_iso``.
+
+    Pass ``train_end``/``val_end``/``test_start`` (ISO dates, UTC) to use
+    :func:`signal_lab.lib.split_data_at_dates`; otherwise the default
+    chronological split is used.
     """
     candidate_trades = df_full[
         df_full["wallet"].isin(wallets) & (df_full["side"] == "BUY")
     ].copy()
     market_close = df_full.groupby("condition_id")["dt"].max()
-    c_train, c_val, c_test = split_data(candidate_trades, method="chronological")
+    if train_end is not None or val_end is not None or test_start is not None:
+        c_train, c_val, c_test = split_data_at_dates(
+            candidate_trades,
+            train_end=train_end, val_end=val_end, test_start=test_start,
+        )
+    else:
+        c_train, c_val, c_test = split_data(candidate_trades, method="chronological")
     residual_fit = fit_roi_residualizer(c_train["copyable_roi"], c_train["price"])
     splits: dict[str, pd.DataFrame] = {}
     for label, frame in (("train", c_train), ("val", c_val), ("test", c_test)):
@@ -303,22 +346,32 @@ def run_strategies(
     hold_metrics: pd.DataFrame,
     strategies: list[StrategyProtocol],
     copy_mask: WalletFilter | None = None,
+    *,
+    train_end: str | None = None,
+    val_end: str | None = None,
+    test_start: str | None = None,
 ) -> tuple[dict[str, pd.DataFrame], list[str]]:
     """Run multiple declarative strategies end-to-end on a shared universe.
-    
+
     If copy_mask is None, it uses the first strategy's copy_mask.
+    Pass ``train_end``/``val_end``/``test_start`` to share the same
+    date-based split as :func:`load_stage1_data` /
+    :func:`candidate_splits_for`.
     """
     if not strategies:
         raise ValueError("Must provide at least one strategy")
-        
+
     mask = copy_mask if copy_mask is not None else strategies[0].copy_mask
     copy_wallets = set(mask(wallet_metrics, hold_metrics))
-    splits = candidate_splits_for(df_full, copy_wallets)
+    splits = candidate_splits_for(
+        df_full, copy_wallets,
+        train_end=train_end, val_end=val_end, test_start=test_start,
+    )
     conditions: set[str] = set()
     for frame in splits.values():
         conditions.update(frame["condition_id"].unique())
     trades = restrict_trades(df_full, conditions)
-    
+
     all_cols = []
     for i, strategy in enumerate(strategies):
         print(f"  -> [{i+1}/{len(strategies)}] Calculating signals for {strategy.name}...", flush=True)
@@ -329,7 +382,7 @@ def run_strategies(
             hold_metrics=hold_metrics,
         )
         all_cols.extend(strategy.get_signal_columns())
-        
+
     # Remove duplicates while preserving order
     all_cols = list(dict.fromkeys(all_cols))
     return splits, all_cols

@@ -47,6 +47,12 @@ DEFAULT_TAGS = {"Politics"}
 
 # DEFAULT_TAGS = {"Weather"}
 
+DEFAULT_SPLIT = {
+    "train_end": "2026-02-01",
+    "val_end": "2026-05-31",
+    "test_start": "2026-06-16",
+}
+
 RESULTS_DIR = Path(__file__).parent  # same directory as this file
 
 # ---------------------------------------------------------------------------
@@ -210,6 +216,89 @@ def split_data(
     print(f"  Val:   {len(df_val):>10,} trades  ({df_val['condition_id'].nunique():>5,} markets)")
     print(f"  Test:  {len(df_test):>10,} trades  ({df_test['condition_id'].nunique():>5,} markets)")
     print(f"  Total: {len(df_full):>10,} trades  ({df_full['condition_id'].nunique():>5,} markets)")
+    return df_train, df_val, df_test
+
+
+def split_data_at_dates(
+    df_full: pd.DataFrame,
+    *,
+    train_end: str | None = None,
+    val_end: str | None = None,
+    test_start: str | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Split trades by explicit market ``end_date_iso`` boundaries.
+
+    Each unique market's ``end_date_iso`` falls into exactly one bucket so
+    all trades for that market land in the same split.
+
+    Parameters
+    ----------
+    train_end : str | None
+        ISO date (UTC). Markets with ``end_date_iso <= train_end`` go to
+        train. Use ``None`` to leave the lower bound open.
+    val_end : str | None
+        ISO date (UTC). Markets with
+        ``train_end < end_date_iso <= val_end`` go to val. Use ``None`` to
+        disable the val bucket.
+    test_start : str | None
+        ISO date (UTC). Markets with ``end_date_iso > val_end`` (or with
+        ``end_date_iso >= test_start`` if ``val_end`` is ``None``) go to
+        test. The default chronological split does not have a hard
+        ``test_start``; this function makes it explicit.
+    """
+    market_end_dates = df_full.groupby("condition_id")["end_date_iso"].first()
+    end_ts = pd.to_datetime(market_end_dates, utc=True, errors="coerce")
+
+    train_end_ts = pd.Timestamp(train_end, tz="UTC") if train_end else None
+    val_end_ts = pd.Timestamp(val_end, tz="UTC") if val_end else None
+    test_start_ts = pd.Timestamp(test_start, tz="UTC") if test_start else None
+
+    date_to_split: dict = {}
+    for cid, dt in end_ts.items():
+        if pd.isna(dt):
+            continue
+        if train_end_ts is not None and dt <= train_end_ts:
+            date_to_split[cid] = "train"
+        elif val_end_ts is not None and dt <= val_end_ts:
+            date_to_split[cid] = "val"
+        elif test_start_ts is not None and dt >= test_start_ts:
+            date_to_split[cid] = "test"
+        else:
+            # Date falls outside the explicit windows; default to test if a
+            # test_start is given, otherwise to val if val_end is given,
+            # otherwise to train.
+            if test_start_ts is not None:
+                date_to_split[cid] = "test"
+            elif val_end_ts is not None:
+                date_to_split[cid] = "val"
+            else:
+                date_to_split[cid] = "train"
+
+    split_col = df_full["condition_id"].map(date_to_split)
+    df_train = df_full[split_col == "train"].copy()
+    df_val = df_full[split_col == "val"].copy()
+    df_test = df_full[split_col == "test"].copy()
+
+    print(
+        f"split_data_at_dates: train_end={train_end} val_end={val_end} "
+        f"test_start={test_start}"
+    )
+    print(
+        f"  Train: {len(df_train):>10,} trades  "
+        f"({df_train['condition_id'].nunique():>5,} markets)"
+    )
+    print(
+        f"  Val:   {len(df_val):>10,} trades  "
+        f"({df_val['condition_id'].nunique():>5,} markets)"
+    )
+    print(
+        f"  Test:  {len(df_test):>10,} trades  "
+        f"({df_test['condition_id'].nunique():>5,} markets)"
+    )
+    print(
+        f"  Total: {len(df_full):>10,} trades  "
+        f"({df_full['condition_id'].nunique():>5,} markets)"
+    )
     return df_train, df_val, df_test
 
 

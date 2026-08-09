@@ -34,6 +34,9 @@ def capital_constrained_sim(
     score_floor: float | None = None,
     alpha_col: str | None = None,
     cap_col: str | None = None,
+    price_mult: float | None = None,
+    group_col: str | None = None,
+    group_cap_frac: float | None = None,
 ) -> dict:
     """Simulate copying ``trades`` with a score-proportional share size under a budget.
 
@@ -63,14 +66,26 @@ def capital_constrained_sim(
     cap_col : str | None
         Per-trade maximum quantity column (defaults to ``copyable_qty``).  For
         scale > 1 this should be the share-depth cap ``bucket_avail_copy_qty``.
+    price_mult : float | None
+        Execution price improvement multiplier in (0, 1].  ``0.98`` models a
+        limit order at ``floor(price*0.98)``: the trade pays ``price*0.98`` and
+        earns an extra ``(1 - price_mult)*price`` per share over the wallet's
+        realized ``copyable_pnl``.  Pairs with ``cap_col`` = the depth at the
+        better price (e.g. ``copyable_qty_098``).
+    group_col : str | None
+        Column grouping trades (e.g. ``condition_id``) for a per-group capital cap.
+    group_cap_frac : float | None
+        Maximum fraction of ``budget`` that may be locked in any single group.
+        ``None`` disables the per-group cap.
 
     Returns a dict with taken-trade info, capital utilization and a daily PnL
     series realized at market resolution.
     """
-    prep = _prep_events(trades, score_col, score_floor, alpha_col, cap_col)
+    prep = _prep_events(trades, score_col, score_floor, alpha_col, cap_col,
+                        price_mult, group_col)
     if prep is None:
         return {"trades": 0, "taken": pd.Series(dtype=bool), "daily_pnl": pd.Series(dtype=float)}
-    return _sweep_events(prep, scale, budget, cost_bps)
+    return _sweep_events(prep, scale, budget, cost_bps, group_cap_frac)
 
 
 def _prep_events(
@@ -79,6 +94,8 @@ def _prep_events(
     score_floor: float | None = None,
     alpha_col: str | None = None,
     cap_col: str | None = None,
+    price_mult: float | None = None,
+    group_col: str | None = None,
 ) -> dict | None:
     """Filter + pre-sort the event stream once for a ``(score_col, floor)``.
 
@@ -109,8 +126,14 @@ def _prep_events(
     cap = copyable_qty
     if cap_col is not None:
         cap = np.clip(t[cap_col].fillna(0.0).values, 0.0, None)
-    price = t["price"].values
+    price_orig = t["price"].values
+    if price_mult is not None:
+        price = price_orig * price_mult
+    else:
+        price = price_orig
     per_share = _per_share_pnl(t).values
+    if price_mult is not None:
+        per_share = per_share + (1.0 - price_mult) * price_orig
 
     dt_ns = pd.to_datetime(t["dt"], utc=True).values.astype("datetime64[ns]").astype(np.int64)
     end_ns = pd.to_datetime(t["end_date_iso"], utc=True).values.astype("datetime64[ns]").astype(np.int64)
@@ -121,6 +144,10 @@ def _prep_events(
     # its release event collide with its open (release sorts first, is skipped,
     # and the capital would never be freed).  Nudge such releases a second later.
     end_ns = np.maximum(end_ns, dt_ns + 1_000_000_000)
+
+    group = None
+    if group_col is not None and group_col in t.columns:
+        group, _ = pd.factorize(t[group_col])
 
     # Event sweep: open at dt (cost), release at end_date_iso (free capital + pnl).
     # Releases sort before opens at equal timestamps so same-day resolutions recycle.
@@ -145,6 +172,7 @@ def _prep_events(
         "price": price,
         "per_share": per_share,
         "end_ns": end_ns,
+        "group": group,
         "t_index": t.index,
     }
 
@@ -154,6 +182,7 @@ def _sweep_events(
     scale: float,
     budget: float,
     cost_bps: float = 0.0,
+    group_cap_frac: float | None = None,
 ) -> dict:
     """Run the sequential budget sweep for a specific ``scale`` on a prep'd frame."""
     weight = prep["weight"]
@@ -165,6 +194,7 @@ def _sweep_events(
     qty = np.clip(scale * weight * alpha * copyable_qty, 0.0, cap)
     cost = price * qty
     pnl = np.nan_to_num(per_share * qty, nan=0.0)
+    group = prep.get("group")
 
     n = prep["n"]
     ts = prep["ts"]
@@ -172,12 +202,17 @@ def _sweep_events(
     idx = prep["idx"]
     budget = float(budget)
     tol = 1e-9
+    group_cap = group_cap_frac * budget if group_cap_frac is not None else None
     taken = np.zeros(n, dtype=bool)
     used = 0.0
     peak = 0.0
     sum_used_dt = 0.0
     total_cost_taken = 0.0
     total_pnl_taken = 0.0
+    group_used = None
+    group_peak = 0.0
+    if group is not None:
+        group_used = np.zeros(group.max() + 1, dtype=float)
     prev = ts[0]
     for k in range(len(ts)):
         tsk = ts[k]
@@ -188,11 +223,22 @@ def _sweep_events(
         if kind[k] == 0:  # release
             if taken[i]:
                 used -= cost[i]
+                if group_used is not None:
+                    group_used[group[i]] -= cost[i]
         else:  # open
             c = cost[i]
-            if used + c <= budget + tol:
+            fits = used + c <= budget + tol
+            if group_used is not None:
+                g = group[i]
+                fits = fits and group_used[g] + c <= group_cap + tol
+            if fits:
                 taken[i] = True
                 used += c
+                if group_used is not None:
+                    g = group[i]
+                    group_used[g] += c
+                    if group_used[g] > group_peak:
+                        group_peak = group_used[g]
                 total_cost_taken += c
                 total_pnl_taken += pnl[i]
         if used > peak:
@@ -222,6 +268,7 @@ def _sweep_events(
         "notional": cnot,
         "peak_used": peak,
         "mean_used": mean_used,
+        "peak_group_used": group_peak if group_used is not None else 0.0,
         "daily_pnl": daily,
     }
 
@@ -293,14 +340,20 @@ def select_scale(
     cost_bps: float = 0.0,
     primary: str = "sharpe_daily",
     score_floor: float | None = None,
+    alpha_col: str | None = None,
+    cap_col: str | None = None,
+    price_mult: float | None = None,
+    group_col: str | None = None,
+    group_cap_frac: float | None = None,
 ) -> tuple[float, pd.DataFrame]:
     """Grid-search ``scale`` on validation by a Sharpe-like objective."""
-    prep = _prep_events(val_trades, score_col, score_floor)
+    prep = _prep_events(val_trades, score_col, score_floor, alpha_col, cap_col,
+                        price_mult, group_col)
     rows = []
     for scale in scale_grid:
         if prep is None:
             continue
-        res = _sweep_events(prep, float(scale), budget, cost_bps)
+        res = _sweep_events(prep, float(scale), budget, cost_bps, group_cap_frac)
         if res["trades"] == 0:
             continue
         daily = res["daily_pnl"]

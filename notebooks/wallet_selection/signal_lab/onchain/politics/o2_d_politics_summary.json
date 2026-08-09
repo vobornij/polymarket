@@ -1,0 +1,93 @@
+{
+  "tag": "Politics",
+  "rule": "price_lt_0p1",
+  "a_composite_col": "composite_shrinkage_markowitz",
+  "split_ic": [
+    {
+      "split": "train",
+      "IC_target_combo": -0.34618213755522553,
+      "IC_pnl_res_combo": -0.003685997431898784,
+      "IC_roi_res_combo": 0.02073321035080639,
+      "IC_target_rule": -0.3491708836503025,
+      "IC_pnl_res_rule": -0.0046535949217376025,
+      "IC_roi_res_rule": 0.02077264197248033,
+      "spearman_price_combo": -0.7184329840529898,
+      "spearman_price_rule": -0.7229849685283677,
+      "n": 3048091
+    },
+    {
+      "split": "val",
+      "IC_target_combo": -0.26825595796046225,
+      "IC_pnl_res_combo": 0.07969052889539173,
+      "IC_roi_res_combo": 0.09625969853340074,
+      "IC_target_rule": -0.26852498966507626,
+      "IC_pnl_res_rule": 0.07986793068462056,
+      "IC_roi_res_rule": 0.09657220063671658,
+      "spearman_price_combo": -0.7413963777585534,
+      "spearman_price_rule": -0.7423514280926838,
+      "n": 2395484
+    },
+    {
+      "split": "test",
+      "IC_target_combo": -0.24779778195542285,
+      "IC_pnl_res_combo": 0.1026299684988673,
+      "IC_roi_res_combo": 0.16825542005676267,
+      "IC_target_rule": -0.2483844660749598,
+      "IC_pnl_res_rule": 0.1023234348887119,
+      "IC_roi_res_rule": 0.16823960340653965,
+      "spearman_price_combo": -0.736889329054879,
+      "spearman_price_rule": -0.7374518006692797,
+      "n": 1165992
+    }
+  ],
+  "sizing": [
+    {
+      "split": "val",
+      "scale": 0.2,
+      "trades": 180944,
+      "net_pnl": 164241.99,
+      "peak_used": 10000.0,
+      "mean_used": 2795.3,
+      "pnl_per_peak": 16.4242,
+      "sharpe_daily": 0.408,
+      "n_candidates": 2395484,
+      "score_col": "composite"
+    },
+    {
+      "split": "val",
+      "scale": 0.2,
+      "trades": 188412,
+      "net_pnl": 163787.53,
+      "peak_used": 10000.0,
+      "mean_used": 2700.61,
+      "pnl_per_peak": 16.3788,
+      "sharpe_daily": 0.401,
+      "n_candidates": 2395484,
+      "score_col": "rule_mask"
+    },
+    {
+      "split": "test",
+      "scale": 0.1,
+      "trades": 70716,
+      "net_pnl": 13118.51,
+      "peak_used": 10000.0,
+      "mean_used": 2577.3,
+      "pnl_per_peak": 1.3119,
+      "sharpe_daily": 0.439,
+      "n_candidates": 1165992,
+      "score_col": "composite"
+    },
+    {
+      "split": "test",
+      "scale": 0.30000000000000004,
+      "trades": 65367,
+      "net_pnl": 9583.12,
+      "peak_used": 10000.0,
+      "mean_used": 3905.4,
+      "pnl_per_peak": 0.9583,
+      "sharpe_daily": 0.317,
+      "n_candidates": 1165992,
+      "score_col": "rule_mask"
+    }
+  ]
+}

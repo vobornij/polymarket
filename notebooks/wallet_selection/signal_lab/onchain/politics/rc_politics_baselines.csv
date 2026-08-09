@@ -1,0 +1,3 @@
+config,alpha_col,val_scale,val_sharpe,val_pnl,val_trades,val_mean_used,val_max_dd,test_sharpe,test_pnl,test_trades,test_mean_used,test_max_dd
+static_copy_default,alpha_equal,0.6000000000000001,0.415,9532.42,12333,3217.89,10143.61,-0.186,-1021.74,4730,3538.05,5966.11
+price_lt_0p1_all,alpha_equal,0.9,0.502,118015.48,138059,3378.48,21914.81,-0.648,-11592.02,60159,4671.81,11698.08

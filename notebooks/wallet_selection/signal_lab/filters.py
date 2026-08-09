@@ -98,6 +98,24 @@ COPY_DEFAULT = WalletFilter("copy_default", _select_copy_default)
 
 
 # ---------------------------------------------------------------------------
+# Non-copy-trade universe: every wallet with at least one opening BUY in
+# the train slice. Used by O2 (Finance/Politics) to test direct strategies
+# on the broad universe without filtering on quality metrics.
+# ---------------------------------------------------------------------------
+
+
+def _select_all_buyers(
+    wallet_metrics: pd.DataFrame,
+    hold_metrics: pd.DataFrame,
+) -> set[str]:
+    """Every wallet that has any trade in the train slice (a passthrough)."""
+    return set(wallet_metrics["wallet"])
+
+
+ALL_BUYERS = WalletFilter("all_buyers", _select_all_buyers)
+
+
+# ---------------------------------------------------------------------------
 # Archetype masks
 # ---------------------------------------------------------------------------
 
@@ -230,6 +248,7 @@ WALLET_FILTERS: dict[str, WalletFilter] = {
     f.name: f
     for f in [
         COPY_DEFAULT,
+        ALL_BUYERS,
         WHALE,
         RETAIL,
         GAMBLER,

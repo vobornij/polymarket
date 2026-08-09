@@ -8,6 +8,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
+# Core data verifiers (always run).
 VERIFIERS = [
     "signal_lab.weather_fv.verify_w0_1",
     "signal_lab.weather_fv.verify_w0_2",
@@ -30,6 +31,26 @@ def main() -> int:
             print(r.stderr, file=sys.stderr)
             rc = r.returncode
             break
+    if rc != 0:
+        return rc
+
+    # Tag-specific O2 verifiers (politics only — finance has its own artefacts
+    # in the parent onchain/ directory and is run separately).
+    politics_dir = HERE / "onchain" / "politics"
+    if politics_dir.exists():
+        for ph in ("a", "b", "c", "d"):
+            print(f"\n=== signal_lab.onchain.verify_o2 --phase {ph} --tag Politics ===")
+            r = subprocess.run(
+                [sys.executable, "-m", "signal_lab.onchain.verify_o2",
+                 "--phase", ph, "--tag", "Politics",
+                 "--out-dir", str(politics_dir)],
+                capture_output=True, text=True, cwd=cwd,
+            )
+            print(r.stdout)
+            if r.returncode != 0:
+                print(r.stderr, file=sys.stderr)
+                rc = r.returncode
+                break
     if rc == 0:
         print("\nALL OK")
     return rc
