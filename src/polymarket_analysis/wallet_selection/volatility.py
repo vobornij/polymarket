@@ -236,9 +236,9 @@ def compute_wallet_metrics(
             pnl=("pnl", "sum"),
             copyable_pnl=("copyable_pnl", "sum"),
             quantity=("quantity", "sum"),
-            copyable_qty_sum=("copyable_qty", "sum"),
+            copyable_qty_sum=("copyable_qty_5m_100", "sum"),
             trade_count=("pnl", "size"),
-            avail_copy_total_vol=("avail_copy_total_vol", "max"),
+            avail_copy_total_vol=("avail_copy_total_vol_5m_100", "max"),
         )
         .reset_index()
     )

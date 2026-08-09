@@ -5,7 +5,12 @@ import pyarrow.parquet as pq
 import pandas as pd
 
 from polymarket_analysis.preprocessing.fill_extender import (
+    COPY_VARIANTS,
+    avail_copy_count_col,
+    avail_copy_qty_col,
+    avail_copy_total_vol_col,
     compute_future_better_price_qty,
+    variant_suffix,
 )
 
 RAW_SHARD = Path(__file__).resolve().parent.parent / "data" / "trades_polygon" / "1.parquet"
@@ -23,11 +28,18 @@ def reference_compute_future_better_price_qty(
 ) -> pd.DataFrame:
     """O(n²) reference for compute_future_better_price_qty."""
     df = df.sort_values(["ts", "tx_hash"]).reset_index(drop=True)
+    window_seconds = int(window.total_seconds())
     extra_factors = [f for f in factors if abs(f - 1.0) > 1e-12]
     if df.empty:
-        df[["avail_copy_qty", "avail_copy_total_vol", "avail_copy_count"]] = np.nan
+        df[
+            [
+                avail_copy_qty_col(window_seconds, 1.0),
+                avail_copy_total_vol_col(window_seconds, 1.0),
+                avail_copy_count_col(window_seconds, 1.0),
+            ]
+        ] = np.nan
         for f in extra_factors:
-            df[f"avail_copy_qty_{round(f*100):03d}"] = np.nan
+            df[avail_copy_qty_col(window_seconds, f)] = np.nan
         return df
 
     T = df["token_id"].iloc[0]
@@ -43,7 +55,10 @@ def reference_compute_future_better_price_qty(
     result_qty = np.zeros(n, dtype=np.float64)
     result_vol = np.zeros(n, dtype=np.float64)
     result_count = np.zeros(n, dtype=np.float64)
-    result_qty_var = {f"{round(f*100):03d}": np.zeros(n, dtype=np.float64) for f in extra_factors}
+    result_qty_var = {
+        variant_suffix(window_seconds, f): np.zeros(n, dtype=np.float64)
+        for f in extra_factors
+    }
 
     for i in range(n):
         is_sell = side[i] == "SELL"
@@ -72,7 +87,7 @@ def reference_compute_future_better_price_qty(
 
         # scaled-factor variants
         for f in extra_factors:
-            code = f"{round(f*100):03d}"
+            suffix = variant_suffix(window_seconds, f)
             adjusted = price[i] * f if side[i] == "BUY" else price[i] / f
             adjusted = np.floor(adjusted * 1000.0) / 1000.0
             thresh = adjusted if is_T else 1.0 - adjusted
@@ -89,15 +104,20 @@ def reference_compute_future_better_price_qty(
                         (need_higher and t_price[j] > thresh)
                         or (not need_higher and t_price[j] < thresh)
                     ):
-                        result_qty_var[code][i] += qty[j]
+                        result_qty_var[suffix][i] += qty[j]
                 j += 1
 
-    df["avail_copy_qty"] = result_qty
-    df["avail_copy_total_vol"] = result_vol
-    df["avail_copy_count"] = result_count
-    for code, arr in result_qty_var.items():
-        df[f"avail_copy_qty_{code}"] = arr
+    df[avail_copy_qty_col(window_seconds, 1.0)] = result_qty
+    df[avail_copy_total_vol_col(window_seconds, 1.0)] = result_vol
+    df[avail_copy_count_col(window_seconds, 1.0)] = result_count
+    for suffix, arr in result_qty_var.items():
+        df[avail_copy_qty_col(window_seconds, _factor_from_suffix(suffix))] = arr
     return df
+
+
+def _factor_from_suffix(suffix: str) -> float:
+    """Recover the factor from a variant suffix like ``5m_095`` -> 0.95."""
+    return float(int(suffix.split("_")[1])) / 100.0
 
 
 def _load_cid(cid: str) -> pd.DataFrame:
@@ -118,59 +138,65 @@ def _load_cid(cid: str) -> pd.DataFrame:
 class TestReferenceImplementation:
 
     def test_agrees_with_main_impl(self):
-        FACTORS = (1.0, 0.98, 0.95, 0.90)
+        # Group variants by lookback window, mirroring enrich_shard.
+        windows: dict[int, list[float]] = {}
+        for window_seconds, factor in COPY_VARIANTS:
+            windows.setdefault(window_seconds, []).append(factor)
+
         for cid in TEST_CIDS:
             raw = _load_cid(cid)
-            ref = reference_compute_future_better_price_qty(
-                raw, window=pd.Timedelta(seconds=300), factors=FACTORS,
-            )
-            main = compute_future_better_price_qty(
-                raw, window=pd.Timedelta(seconds=300), factors=FACTORS,
-            )
+            main = raw
+            ref = raw
+            for window_seconds, factors in windows.items():
+                window = pd.Timedelta(seconds=window_seconds)
+                main = compute_future_better_price_qty(
+                    main, window=window, factors=tuple(factors),
+                )
+                ref = reference_compute_future_better_price_qty(
+                    ref, window=window, factors=tuple(factors),
+                )
 
-            pq_ = main["avail_copy_qty"].values
-            pv_ = main["avail_copy_total_vol"].values
-            pc_ = main["avail_copy_count"].values
-            rq_ = ref["avail_copy_qty"].values
-            rv_ = ref["avail_copy_total_vol"].values
-            rc_ = ref["avail_copy_count"].values
+            print(f"\n=== {cid[:30]}... ({len(raw):5d} trades) ===")
+            for window_seconds, factor in COPY_VARIANTS:
+                suffix = variant_suffix(window_seconds, factor)
+                qty_col = avail_copy_qty_col(window_seconds, factor)
+                pq_ = main[qty_col].values
+                rq_ = ref[qty_col].values
+                qty_ok = np.max(np.abs(pq_ - rq_)) < 0.01
+                assert qty_ok, f"{qty_col}: max|diff|={np.max(np.abs(pq_ - rq_)):.6f}"
 
-            qty_ok = np.max(np.abs(pq_ - rq_)) < 0.01
-            vol_ok = np.max(np.abs(pv_ - rv_)) < 0.01
-            cnt_ok = np.max(np.abs(pc_ - rc_)) < 0.01
+                p_cq = np.minimum(main["quantity"].values, pq_)
+                r_cq = np.minimum(ref["quantity"].values, rq_)
+                assert np.max(np.abs(p_cq - r_cq)) < 0.01
 
-            p_cq = np.minimum(main["quantity"].values, pq_)
-            r_cq = np.minimum(ref["quantity"].values, rq_)
-            cq_ok = np.max(np.abs(p_cq - r_cq)) < 0.01
+                if abs(factor - 1.0) < 1e-12:
+                    pv_ = main[avail_copy_total_vol_col(window_seconds, factor)].values
+                    pc_ = main[avail_copy_count_col(window_seconds, factor)].values
+                    rv_ = ref[avail_copy_total_vol_col(window_seconds, factor)].values
+                    rc_ = ref[avail_copy_count_col(window_seconds, factor)].values
+                    assert np.max(np.abs(pv_ - rv_)) < 0.01
+                    assert np.max(np.abs(pc_ - rc_)) < 0.01
 
-            assert qty_ok
-            assert vol_ok
-            assert cnt_ok
-            assert cq_ok
+                print(
+                    f"  {suffix:>8s}: qty max|diff|={np.max(np.abs(pq_ - rq_)):.6f}  "
+                    f"cq max|diff|={np.max(np.abs(p_cq - r_cq)):.6f}"
+                )
 
-# --- scaled-factor variants ---
-            for f in (0.98, 0.95, 0.90):
-                code = f"{round(f*100):03d}"
-                col = f"avail_copy_qty_{code}"
-                p_var = main[col].values
-                r_var = ref[col].values
-                var_ok = np.max(np.abs(p_var - r_var)) < 0.01
-                assert var_ok, f"{code}: max|diff|={np.max(np.abs(p_var - r_var)):.6f}"
-                p_var_cq = np.minimum(main["quantity"].values, p_var)
-                r_var_cq = np.minimum(ref["quantity"].values, r_var)
-                assert np.max(np.abs(p_var_cq - r_var_cq)) < 0.01
-
-            # --- stats from both impls ---
+            # --- stats from both impls (primary variant: 5 min, factor 1.0) ---
             T = raw["token_id"].iloc[0]
             is_token = (raw["token_id"] == T).to_numpy()
             t_price = np.where(is_token, raw["price"].values, 1 - raw["price"].values)
-
             qty = raw["quantity"].values
 
-            print(f"\n=== {cid[:30]}... ({len(raw):5d} trades) ===")
-            print(f"  max|diff|: qty={np.max(np.abs(pq_ - rq_)):.6f}  vol={np.max(np.abs(pv_ - rv_)):.6f}  cnt={np.max(np.abs(pc_ - rc_)):.6f}  cq={np.max(np.abs(p_cq - r_cq)):.6f}")
-            print(f"  {'metric':30s} {'fill_extender':>14s} {'reference':>14s} {'diff':>10s}")
+            col = avail_copy_qty_col(5 * 60, 1.0)
+            pq_ = main[col].values
+            rq_ = ref[col].values
+            p_cq = np.minimum(qty, pq_)
+            r_cq = np.minimum(qty, rq_)
+            pv_ = main[avail_copy_total_vol_col(5 * 60, 1.0)].values
+            rv_ = ref[avail_copy_total_vol_col(5 * 60, 1.0)].values
 
+            print(f"  {'metric':30s} {'fill_extender':>14s} {'reference':>14s} {'diff':>10s}")
             for label, mv, rv in [
                 ("trades with avail_copy_qty > 0", (pq_ > 0.001).sum(), (rq_ > 0.001).sum()),
                 ("total qty", qty.sum(), qty.sum()),
@@ -197,6 +223,6 @@ class TestReferenceImplementation:
                         r = main.iloc[idx]
                         tok = 'T' if r['token_id'] == T else 'C'
                         tp = r['price'] if tok == 'T' else 1 - r['price']
-                        cq = min(r['quantity'], r['avail_copy_qty'])
-                        print(f"  {str(r['ts']):>22} {str(r['tx_hash'])[:28]:>28}  {r['side']:6} {tok:4} {r['price']:>7.4f} {tp:>7.4f} {r['quantity']:>8.1f} {r['avail_copy_qty']:>10.2f} {cq:>10.2f}")
+                        cq = min(r['quantity'], r[col])
+                        print(f"  {str(r['ts']):>22} {str(r['tx_hash'])[:28]:>28}  {r['side']:6} {tok:4} {r['price']:>7.4f} {tp:>7.4f} {r['quantity']:>8.1f} {r[col]:>10.2f} {cq:>10.2f}")
                     print(f"  Sum copyable_qty = {p_cq[at_ts.values].sum():.2f}")

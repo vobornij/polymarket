@@ -31,6 +31,44 @@ def _factor_code(f: float) -> str:
     return f"{round(f * 100):03d}"
 
 
+# ── copy variants ─────────────────────────────────────────────────────────────
+# Enrichment computes, per variant (lookback window, fill-price factor), the
+# total quantity of future trades at a better/scaled price.  Each variant emits
+# ``avail_copy_qty_{window_min}m_{factor_code}``; factor-1.0 variants also emit
+# ``avail_copy_total_vol_*`` and ``avail_copy_count_*``.  Per-fill caps are
+# ``copyable_qty_{window_min}m_{factor_code}``.
+COPY_VARIANTS: list[tuple[int, float]] = [
+    (5 * 60, 1.0),    # 5 min  @ price × 1.00  (primary variant)
+    (5 * 60, 0.95),   # 5 min  @ price × 0.95
+    (20 * 60, 1.0),   # 20 min @ price × 1.00
+]
+
+
+def variant_suffix(window_seconds: int, factor: float) -> str:
+    """Suffix encoding a copy variant, e.g. ``5m_100`` (5 min at factor 1.0)."""
+    return f"{window_seconds // 60}m_{_factor_code(factor)}"
+
+
+def avail_copy_qty_col(window_seconds: int, factor: float) -> str:
+    """Column name for a variant's future-better-price quantity."""
+    return f"avail_copy_qty_{variant_suffix(window_seconds, factor)}"
+
+
+def avail_copy_total_vol_col(window_seconds: int, factor: float) -> str:
+    """Column name for a variant's future-better-price volume."""
+    return f"avail_copy_total_vol_{variant_suffix(window_seconds, factor)}"
+
+
+def avail_copy_count_col(window_seconds: int, factor: float) -> str:
+    """Column name for a variant's future-better-price trade count."""
+    return f"avail_copy_count_{variant_suffix(window_seconds, factor)}"
+
+
+def copyable_qty_col(window_seconds: int, factor: float) -> str:
+    """Column name for a variant's per-fill copyable quantity."""
+    return f"copyable_qty_{variant_suffix(window_seconds, factor)}"
+
+
 def compute_future_better_price_qty(
     df: pd.DataFrame,
     window: datetime.timedelta,
@@ -49,22 +87,30 @@ def compute_future_better_price_qty(
       ``1 - adjusted`` (i.e. against the stored "BUY T" trade tape).
     - Adjusted limits are rounded **down to 3 decimals**.
 
-    Factor ``1.0`` reproduces the original unscaled metric exactly (no rounding)
-    and emits ``avail_copy_qty`` / ``avail_copy_total_vol`` / ``avail_copy_count``.
-    Every additional factor ``f`` emits ``avail_copy_qty_{code}`` (qty only).
+    Columns are suffixed with the variant's window+factor (see
+    :func:`variant_suffix`), e.g. a 5-minute window at factor 1.0 emits
+    ``avail_copy_qty_5m_100`` / ``avail_copy_total_vol_5m_100`` /
+    ``avail_copy_count_5m_100``.  Factor ``1.0`` reproduces the original
+    unscaled metric exactly (no rounding) and emits qty/vol/count; every
+    additional factor ``f`` emits ``avail_copy_qty_{suffix}`` (qty only).
 
     Only trades with a strictly greater timestamp than the current fill are
     counted (same-timestamp trades are excluded), regardless of factor.
     """
+    window_seconds = int(window.total_seconds())
     extra_factors = [f for f in factors if abs(f - 1.0) > 1e-12]
+
+    qty_col = avail_copy_qty_col(window_seconds, 1.0)
+    vol_col = avail_copy_total_vol_col(window_seconds, 1.0)
+    count_col = avail_copy_count_col(window_seconds, 1.0)
 
     df = df.sort_values(["ts", "tx_hash"]).reset_index(drop=True)
     if df.empty:
-        df["avail_copy_qty"] = []
-        df["avail_copy_total_vol"] = []
-        df["avail_copy_count"] = []
+        df[qty_col] = []
+        df[vol_col] = []
+        df[count_col] = []
         for f in extra_factors:
-            df[f"avail_copy_qty_{_factor_code(f)}"] = []
+            df[avail_copy_qty_col(window_seconds, f)] = []
         return df
 
     # tree will store only "BUY T" trades. Full df contains both sides
@@ -117,9 +163,9 @@ def compute_future_better_price_qty(
         less = np.searchsorted(unique_prices, t_thresh, side="left")
         # number of unique prices less-or-equal than threshold
         leq = np.searchsorted(unique_prices, t_thresh, side="right")
-        code = _factor_code(f)
-        variant_hi[code] = less            # range_sum(1, less)
-        variant_lo[code] = leq             # range_sum(leq + 1, bit_n)
+        suffix = variant_suffix(window_seconds, f)
+        variant_hi[suffix] = less      # range_sum(1, less)
+        variant_lo[suffix] = leq       # range_sum(leq + 1, bit_n)
 
     bit_qty = BIT(bit_n)
     bit_vol = BIT(bit_n)
@@ -129,7 +175,7 @@ def compute_future_better_price_qty(
     result_qty = np.zeros(n, dtype=np.float32)
     result_vol = np.zeros(n, dtype=np.float32)
     result_count = np.zeros(n, dtype=np.float32)
-    result_qty_var = {code: np.zeros(n, dtype=np.float32) for code in variant_hi}
+    result_qty_var = {suffix: np.zeros(n, dtype=np.float32) for suffix in variant_hi}
 
     add_ptr = 0
     remove_ptr = 0
@@ -162,21 +208,21 @@ def compute_future_better_price_qty(
             result_qty[i] = bit_qty.range_sum(1, pi-1)
             result_vol[i] = bit_vol.range_sum(1, pi-1)
             result_count[i] = bit_count.range_sum(1, pi-1)
-            for code, arr in result_qty_var.items():
-                arr[i] = bit_qty.range_sum(1, int(variant_hi[code][i]))
+            for suffix, arr in result_qty_var.items():
+                arr[i] = bit_qty.range_sum(1, int(variant_hi[suffix][i]))
         else:
             # better = higher price
             result_qty[i] = bit_qty.range_sum(pi+1, bit_qty.n)
             result_vol[i] = bit_vol.range_sum(pi+1, bit_vol.n)
             result_count[i] = bit_count.range_sum(pi+1, bit_count.n)
-            for code, arr in result_qty_var.items():
-                arr[i] = bit_qty.range_sum(int(variant_lo[code][i]) + 1, bit_qty.n)
+            for suffix, arr in result_qty_var.items():
+                arr[i] = bit_qty.range_sum(int(variant_lo[suffix][i]) + 1, bit_qty.n)
 
-    df["avail_copy_qty"] = result_qty
-    df["avail_copy_total_vol"] = result_vol
-    df["avail_copy_count"] = result_count
-    for code, arr in result_qty_var.items():
-        df[f"avail_copy_qty_{code}"] = arr
+    df[qty_col] = result_qty
+    df[vol_col] = result_vol
+    df[count_col] = result_count
+    for suffix, arr in result_qty_var.items():
+        df[f"avail_copy_qty_{suffix}"] = arr
 
     # remove helper column
     del df['T_price']
@@ -184,14 +230,28 @@ def compute_future_better_price_qty(
     return df
 
 
-def enrich_shard(f, enriched_dir: Path, seconds: int, token_df: pd.DataFrame) -> None:
+def enrich_shard(
+    f,
+    enriched_dir: Path,
+    token_df: pd.DataFrame,
+    variants: list[tuple[int, float]] | None = None,
+) -> None:
+    """Enrich one raw shard with copyable-quantity metrics for ``variants``.
+
+    ``variants`` is a list of ``(window_seconds, factor)`` tuples; defaults to
+    :data:`COPY_VARIANTS`.  Each variant emits suffixed ``avail_copy_qty_*``
+    columns plus a per-fill ``copyable_qty_*`` cap.
+    """
+    variants = COPY_VARIANTS if variants is None else variants
     if (enriched_dir / f"enriched_{f.name}").exists():
         print(f"Enriched file for {f.name} already exists, skipping...")
         return
     enriched_dir.mkdir(parents=True, exist_ok=True)
     raw = pd.read_parquet(f)
     print(f"{len(raw)} trades in {f.name}")
-    if("avail_copy_qty" in raw.columns): return
+    primary_qty_col = avail_copy_qty_col(variants[0][0], variants[0][1])
+    if primary_qty_col in raw.columns:
+        return
     raw = raw.merge(token_df[["token_id"]], on="token_id", how="inner")
     print(f"{len(raw)} trades after merging with token_df for {f.name}")
 
@@ -204,20 +264,28 @@ def enrich_shard(f, enriched_dir: Path, seconds: int, token_df: pd.DataFrame) ->
 
     raw['ts'] = pd.to_datetime(raw['block_timestamp'], utc=True, unit='s')
 
-    window = pd.Timedelta(seconds=seconds)
+    # Group variants by lookback window so one pass covers all factors per window.
+    windows: dict[int, list[float]] = {}
+    for window_seconds, factor in variants:
+        windows.setdefault(window_seconds, []).append(factor)
+
     parts = []
     for _, g in raw.groupby('condition_id', sort=False):
-        parts.append(compute_future_better_price_qty(
-            g, window=window, factors=(1.0, 0.98, 0.95, 0.90),
-        ))
+        out = g
+        for window_seconds, factors in windows.items():
+            out = compute_future_better_price_qty(
+                out,
+                window=pd.Timedelta(seconds=window_seconds),
+                factors=tuple(factors),
+            )
+        parts.append(out)
     enriched = pd.concat(parts, ignore_index=True)
 
-    enriched['copyable_qty'] = enriched['quantity'].clip(lower=0, upper=enriched['avail_copy_qty'])
-    for code in ("098", "095", "090"):
-        col = f"avail_copy_qty_{code}"
-        enriched[f"copyable_qty_{code}"] = enriched['quantity'].clip(
+    for window_seconds, factor in variants:
+        col = avail_copy_qty_col(window_seconds, factor)
+        enriched[copyable_qty_col(window_seconds, factor)] = enriched['quantity'].clip(
             lower=0, upper=enriched[col],
         )
     enriched.to_parquet(enriched_dir / f"enriched_{f.name}", index=False)
 
-    print(f"Enriched {f.name} with copyable_qty")
+    print(f"Enriched {f.name} with copyable_qty variants")

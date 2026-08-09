@@ -13,8 +13,8 @@ Schemes (all benchmarked against copy-all alpha=1):
 - tier: 3-5 tiers by train Sharpe proxy, alphas a_min..a_max per tier, mean-1.
 - uniform-k: alpha_w = k for all (pure leverage, capped by depth).
 
-Cap: qty = clip(alpha_w * copyable_qty, 0, bucket_avail_copy_qty) — the
-share-depth cap exported by stage0 as ``avail_copy_qty``.
+Cap: qty = clip(alpha_w * copyable_qty_5m_100, 0, bucket_avail_copy_qty) — the
+share-depth cap exported by stage0 as ``avail_copy_qty_5m_100``.
 
 Outputs: wallet_scaling_sim.csv (val for all configs + test for chosen),
 wallet_scaling_ci.csv (cost sweep + bootstrap CI for chosen designs),
@@ -58,18 +58,18 @@ UNIFORM_K_GRID = (0.5, 1.0, 2.0, 4.0)
 
 def attach_depth_cap(splits: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
     """Set the share-depth cap for each candidate split from stage0's
-    per-bucket max copy quantity ``avail_copy_qty``, aliased to
+    per-bucket max copy quantity ``avail_copy_qty_5m_100``, aliased to
     ``bucket_avail_copy_qty``.
     """
     out = {}
     for name, fr in splits.items():
-        if "avail_copy_qty" not in fr.columns:
+        if "avail_copy_qty_5m_100" not in fr.columns:
             raise KeyError(
-                f"{name} split is missing 'avail_copy_qty'; stage0 must export "
+                f"{name} split is missing 'avail_copy_qty_5m_100'; stage0 must export "
                 "the per-bucket max copy quantity."
             )
         fr = fr.copy()
-        fr["bucket_avail_copy_qty"] = fr["avail_copy_qty"].clip(lower=0.0).fillna(fr["copyable_qty"])
+        fr["bucket_avail_copy_qty"] = fr["avail_copy_qty_5m_100"].clip(lower=0.0).fillna(fr["copyable_qty_5m_100"])
         fr["score1"] = 1.0
         out[name] = fr
     return out
@@ -118,20 +118,20 @@ def price_scale_fill_sim(
     is the market-copy baseline: filled immediately at ``p``).
 
     Fill entry is the limit price, so the recomputed pnl is
-    ``copyable_pnl + copyable_qty * (p - limit)`` (same formula and quantity as
+    ``copyable_pnl + copyable_qty_5m_100 * (p - limit)`` (same formula and quantity as
     the original ``copyable_pnl``); unfilled scaled trades contribute 0.
 
     ``signals`` needs ``wallet, condition_id, token_id, dt, price,
-    copyable_qty, copyable_pnl``.  ``tape`` needs ``condition_id, token_id,
+    copyable_qty_5m_100, copyable_pnl``.  ``tape`` needs ``condition_id, token_id,
     dt, price`` and may contain both sides / all wallets.
 
-    Returns one row per (signal, scale) with ``dt, price, copyable_qty,
+    Returns one row per (signal, scale) with ``dt, price, copyable_qty_5m_100,
     copyable_pnl, limit_price, filled, pnl``.
     """
-    sig = signals[signals["copyable_qty"] > 0].copy()
+    sig = signals[signals["copyable_qty_5m_100"] > 0].copy()
     if sig.empty:
         return pd.DataFrame(columns=[
-            "wallet", "condition_id", "token_id", "dt", "price", "copyable_qty",
+            "wallet", "condition_id", "token_id", "dt", "price", "copyable_qty_5m_100",
             "copyable_pnl", "scale", "limit_price", "filled", "pnl",
         ])
     sig["dt_ns"] = pd.to_datetime(sig["dt"], utc=True).astype(np.int64)
@@ -154,7 +154,7 @@ def price_scale_fill_sim(
         tau = g["dt_ns"].to_numpy()
         price = g["price"].to_numpy()
         cpnl = g["copyable_pnl"].to_numpy()
-        qty = g["copyable_qty"].to_numpy()
+        qty = g["copyable_qty_5m_100"].to_numpy()
         wallet = g["wallet"].to_numpy()
         if dt_s is not None:
             start = np.searchsorted(dt_s, tau, side="right")
@@ -176,7 +176,7 @@ def price_scale_fill_sim(
                     cpnl[i], scale, limit, filled, pnl,
                 ))
     return pd.DataFrame(rows, columns=[
-        "wallet", "condition_id", "token_id", "dt", "price", "copyable_qty",
+        "wallet", "condition_id", "token_id", "dt", "price", "copyable_qty_5m_100",
         "copyable_pnl", "scale", "limit_price", "filled", "pnl",
     ])
 

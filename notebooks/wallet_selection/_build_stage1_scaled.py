@@ -105,7 +105,7 @@ del df_full, df_train, df_val, df_test
 
 for name in ("train", "val", "test"):
     fr = splits[name]
-    capped = (fr["bucket_avail_copy_qty"] < fr["copyable_qty"]).mean()
+    capped = (fr["bucket_avail_copy_qty"] < fr["copyable_qty_5m_100"]).mean()
     print(f"{name:5s}: {len(fr):,}  trades_capped_by_depth={capped:.3f}")
 """
 
@@ -301,8 +301,8 @@ import plotly.graph_objects as go
 test = splits["test"].copy()
 alpha_map = schemes[best_name][1]
 test["alpha_w"] = test["wallet"].map(alpha_map).fillna(1.0)
-test["qty"] = np.clip(test["alpha_w"] * test["copyable_qty"], 0.0, test["bucket_avail_copy_qty"])
-test["copy_pnl"] = test["copyable_pnl"] / test["copyable_qty"].replace(0, np.nan) * test["qty"]
+test["qty"] = np.clip(test["alpha_w"] * test["copyable_qty_5m_100"], 0.0, test["bucket_avail_copy_qty"])
+test["copy_pnl"] = test["copyable_pnl"] / test["copyable_qty_5m_100"].replace(0, np.nan) * test["qty"]
 
 test["res_ts"] = pd.to_datetime(test["last_condition_trade_ts"], utc=True, errors="coerce")
 window_end = test["dt"].max()
@@ -374,7 +374,7 @@ copy each candidate copy-wallet BUY at `limit = price * scale` for
 - **Fill rule:** filled iff within `(dt, dt+5min]` any trade on the same
   `(condition_id, token_id)` prints at `price <= limit` with a strictly greater timestamp.
 - **Fill price:** exactly the limit price, so
-  `pnl = copyable_pnl + copyable_qty * (price - limit)` (same formula/quantity as the
+  `pnl = copyable_pnl + copyable_qty_5m_100 * (price - limit)` (same formula/quantity as the
   original `copyable_pnl`); unfilled trades contribute 0.
 - **Baseline:** `scale = 1.0` is the market-copy (fill immediately at `price`), so it
   must reproduce `sum(copyable_pnl)` on the sample.
@@ -389,9 +389,9 @@ test_markets = np.sort(splits["test"]["condition_id"].unique())
 n_sel = min(1000, len(test_markets))
 sel_markets = rng.choice(test_markets, size=n_sel, replace=False)
 signals = splits["test"][splits["test"]["condition_id"].isin(sel_markets)].copy()
-signals = signals[signals["copyable_qty"] > 0]
+signals = signals[signals["copyable_qty_5m_100"] > 0]
 print(f"test markets: {len(test_markets):,}  sampled: {n_sel:,}")
-print(f"candidate BUYs (copyable_qty>0) on sample: {len(signals):,}")
+print(f"candidate BUYs (copyable_qty_5m_100>0) on sample: {len(signals):,}")
 
 _tape_cols = ["condition_id", "token_id", "dt", "avg_price"]
 tape_parts = []
@@ -455,7 +455,7 @@ Copy qty is capped by the reconstructed share-depth ``bucket_avail_copy_qty``.
     code(CELL_LOAD_DATA),
     md("## Copy universe\n\nCandidate wallets = `COPY_DEFAULT` (copy-default filter)."),
     code(CELL_COPY_UNIVERSE),
-    md("## Share-depth cap\n\nCap = stage0 Phase 2's per-bucket max copy quantity (`avail_copy_qty`), exported with the processed trades."),
+    md("## Share-depth cap\n\nCap = stage0 Phase 2's per-bucket max copy quantity (`avail_copy_qty_5m_100`), exported with the processed trades."),
     code(CELL_BUILD_SPLITS),
     md("## Train per-wallet stats\n\nPer-wallet daily pnl (copyable, alpha=1) with mean/std shrinkage -> Sharpe proxy."),
     code(CELL_TRAIN_STATS),
@@ -468,7 +468,7 @@ Copy qty is capped by the reconstructed share-depth ``bucket_avail_copy_qty``.
     code(CELL_TEST),
     md("## Robustness: cost sweep + bootstrap CI\n\nCost sweep (0/10/30bps) + 7-day block-bootstrap Sharpe CI on test."),
     code(CELL_ROBUSTNESS),
-    md("## Test-period exposure & PnL over time\n\nExposure opens at each BUY (`qty = alpha_w * copyable_qty` capped by `bucket_avail_copy_qty`, at `price`) and closes at contract resolution `last_condition_trade_ts` — only for contracts resolved within the test window, so unresolved exposure stays open. PnL shown twice: attributed at trade time (`dt`) and at contract resolution time (`last_condition_trade_ts`, resolved contracts only)."),
+    md("## Test-period exposure & PnL over time\n\nExposure opens at each BUY (`qty = alpha_w * copyable_qty_5m_100` capped by `bucket_avail_copy_qty`, at `price`) and closes at contract resolution `last_condition_trade_ts` — only for contracts resolved within the test window, so unresolved exposure stays open. PnL shown twice: attributed at trade time (`dt`) and at contract resolution time (`last_condition_trade_ts`, resolved contracts only)."),
     code(CELL_EXPOSURE_PNL),
     md("## Per-wallet contributions\n\nTrain alphas vs forward (test) wallet stats."),
     code(CELL_CONTRIB),

@@ -27,19 +27,38 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from polymarket_analysis.preprocessing.fill_extender import (
+    COPY_VARIANTS,
+    avail_copy_count_col,
+    avail_copy_qty_col,
+    avail_copy_total_vol_col,
+    copyable_qty_col,
+    variant_suffix,
+)
+
+
+def _copy_read_cols() -> list[str]:
+    """Raw-shard copy columns for every variant (vol/count only for factor 1.0)."""
+    cols = []
+    for window_seconds, factor in COPY_VARIANTS:
+        cols.append(avail_copy_qty_col(window_seconds, factor))
+        if abs(factor - 1.0) < 1e-12:
+            cols.append(avail_copy_total_vol_col(window_seconds, factor))
+            cols.append(avail_copy_count_col(window_seconds, factor))
+    return cols
+
 
 # Columns read from each raw shard parquet.
 _READ_COLS = [
     "tx_hash", "log_index", "block_timestamp", "condition_id",
     "token_id", "outcome", "price", "quantity", "usdc_amount", "position",
-    "wallet", "side", "avail_copy_qty", "avail_copy_total_vol",
-    "avail_copy_count",
-    "avail_copy_qty_098", "avail_copy_qty_095", "avail_copy_qty_090",
+    "wallet", "side",
+    *_copy_read_cols(),
 ]
 
 # Columns needed to rank wallets by training P&L (Phase 1).
 _PHASE1_READ_COLS = [
-    "token_id", "wallet", "side", "quantity", "price", "copyable_qty",
+    "token_id", "wallet", "side", "quantity", "price", copyable_qty_col(5 * 60, 1.0),
 ]
 
 _GROUP_KEYS = ["tx_hash", "wallet", "side", "token_id"]
@@ -125,7 +144,7 @@ def select_top_wallets_shard(
         )
     else:
         train.loc[:, "copyable_pnl"] = (
-            train['copyable_qty'].clip(lower=0, upper=train['quantity'])
+            train[copyable_qty_col(5 * 60, 1.0)].clip(lower=0, upper=train['quantity'])
             * (train["final_price"] - train["price"])
             * np.where(train["side"] == "BUY", 1, -1)
         )
@@ -210,35 +229,39 @@ def enrich_and_group_shard(
     enriched["price_x_qty"] = enriched["price"] * enriched["quantity"]
 
     # Group fills → one row per tx_hash × wallet × side × token_id
+    agg_dict = {
+        "dt":               ("dt",                 "first"),
+        "condition_id":     ("condition_id",       "first"),
+        "outcome":          ("outcome",            "first"),
+        "token_winner":     ("token_winner",       "first"),
+        "final_price":      ("final_price",        "first"),
+        "last_condition_trade_ts": ("last_condition_trade_ts", "first"),
+        "position":         ("position",           "max"),
+        "total_quantity":   ("quantity",           "sum"),
+        "price_x_qty_sum":  ("price_x_qty",        "sum"),
+        "trade_value_usdc": ("usdc_amount",        "sum"),
+        "final_value_usdc": ("final_value_usdc",   "sum"),
+        "num_fills":        ("log_index",          "count"),
+    }
+    for window_seconds, factor in COPY_VARIANTS:
+        qty_col = avail_copy_qty_col(window_seconds, factor)
+        agg_dict[qty_col] = (qty_col, "max")
+        if abs(factor - 1.0) < 1e-12:
+            vol_col = avail_copy_total_vol_col(window_seconds, factor)
+            cnt_col = avail_copy_count_col(window_seconds, factor)
+            agg_dict[vol_col] = (vol_col, "sum")
+            agg_dict[cnt_col] = (cnt_col, "sum")
+
     grouped = (
         enriched.groupby(_GROUP_KEYS, sort=False)
-        .agg(
-            dt               = ("dt",              "first"),
-            condition_id     = ("condition_id",    "first"),
-            outcome          = ("outcome",          "first"),
-            token_winner     = ("token_winner",     "first"),
-            final_price      = ("final_price",      "first"),
-            last_condition_trade_ts = ("last_condition_trade_ts", "first"),
-            position         = ("position",         "max"),
-            total_quantity   = ("quantity",         "sum"),
-            price_x_qty_sum  = ("price_x_qty",     "sum"),
-            trade_value_usdc = ("usdc_amount",      "sum"),
-            final_value_usdc = ("final_value_usdc", "sum"),
-            num_fills        = ("log_index",        "count"),
-            avail_copy_qty = ("avail_copy_qty", "max"),
-            avail_copy_total_vol = ("avail_copy_total_vol", "sum"),
-            avail_copy_count  = ("avail_copy_count", "sum"),
-            avail_copy_qty_098 = ("avail_copy_qty_098", "max"),
-            avail_copy_qty_095 = ("avail_copy_qty_095", "max"),
-            avail_copy_qty_090 = ("avail_copy_qty_090", "max"),
-        )
+        .agg(**agg_dict)
         .reset_index()
     )
 
-    grouped["copyable_qty"] = grouped["total_quantity"].clip(upper=grouped["avail_copy_qty"])
-    for code in ("098", "095", "090"):
-        grouped[f"copyable_qty_{code}"] = grouped["total_quantity"].clip(
-            upper=grouped[f"avail_copy_qty_{code}"]
+    for window_seconds, factor in COPY_VARIANTS:
+        qty_col = avail_copy_qty_col(window_seconds, factor)
+        grouped[copyable_qty_col(window_seconds, factor)] = grouped["total_quantity"].clip(
+            upper=grouped[qty_col]
         )
 
     is_buy = grouped["side"] == "BUY"
@@ -249,7 +272,7 @@ def enrich_and_group_shard(
     )
 
     grouped["copyable_pnl"] = (
-        (grouped['copyable_qty'].clip(lower=0, upper=grouped['total_quantity']) / grouped['total_quantity'])
+        (grouped[copyable_qty_col(5 * 60, 1.0)].clip(lower=0, upper=grouped['total_quantity']) / grouped['total_quantity'])
         * grouped["trade_pnl"]
     )
 

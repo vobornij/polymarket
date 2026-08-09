@@ -2,7 +2,7 @@
 Capital-constrained sizing backtest for composite scores.
 
 Copies a *scaled share quantity* of each candidate trade (score-proportional,
-clipped to ``copyable_qty``) under a global capital budget.  Capital is locked
+clipped to ``copyable_qty_5m_100``) under a global capital budget.  Capital is locked
 from the trade's ``dt`` until market resolution (``end_date_iso``), so a budget
 forces trades to compete — the direct, realistic test of whether a composite's
 raw PnL edge survives risk-adjusted sizing.
@@ -21,8 +21,8 @@ import pandas as pd
 
 
 def _per_share_pnl(df: pd.DataFrame) -> pd.Series:
-    """Dollar PnL per copied share: ``copyable_pnl / copyable_qty``."""
-    return df["copyable_pnl"] / df["copyable_qty"].replace(0, np.nan)
+    """Dollar PnL per copied share: ``copyable_pnl / copyable_qty_5m_100``."""
+    return df["copyable_pnl"] / df["copyable_qty_5m_100"].replace(0, np.nan)
 
 
 def capital_constrained_sim(
@@ -43,7 +43,7 @@ def capital_constrained_sim(
     Parameters
     ----------
     trades : DataFrame
-        Candidate trades with columns ``dt``, ``price``, ``copyable_qty``,
+        Candidate trades with columns ``dt``, ``price``, ``copyable_qty_5m_100``,
         ``copyable_pnl``, ``end_date_iso`` and ``score_col``.  If ``market_close``
         is present, capital is released at ``max(end_date_iso, market_close)``
         (the market's actual close); otherwise ``end_date_iso`` alone.
@@ -52,7 +52,7 @@ def capital_constrained_sim(
     budget : float
         Global capital budget in dollars.
     scale : float
-        Global size coefficient: ``qty = clip(scale * max(0, score) * alpha * copyable_qty,
+        Global size coefficient: ``qty = clip(scale * max(0, score) * alpha * copyable_qty_5m_100,
         0, cap)``.
     cost_bps : float
         Cost in basis points applied to the notional of taken trades.
@@ -64,14 +64,14 @@ def capital_constrained_sim(
         Per-trade multiplier column (defaults to 1.0).  Trades with ``alpha <= 0``
         are not fired.  This is the per-wallet copy scale.
     cap_col : str | None
-        Per-trade maximum quantity column (defaults to ``copyable_qty``).  For
+        Per-trade maximum quantity column (defaults to ``copyable_qty_5m_100``).  For
         scale > 1 this should be the share-depth cap ``bucket_avail_copy_qty``.
     price_mult : float | None
         Execution price improvement multiplier in (0, 1].  ``0.98`` models a
         limit order at ``floor(price*0.98)``: the trade pays ``price*0.98`` and
         earns an extra ``(1 - price_mult)*price`` per share over the wallet's
         realized ``copyable_pnl``.  Pairs with ``cap_col`` = the depth at the
-        better price (e.g. ``copyable_qty_098``).
+        better price (e.g. ``copyable_qty_5m_095``).
     group_col : str | None
         Column grouping trades (e.g. ``condition_id``) for a per-group capital cap.
     group_cap_frac : float | None
@@ -102,7 +102,7 @@ def _prep_events(
     Returns None if no trade survives.  The pre-sorted event arrays are shared
     across all ``scale`` values so the budget sweep can be reused cheaply.
     """
-    t = trades[trades["copyable_qty"] > 0].copy()
+    t = trades[trades["copyable_qty_5m_100"] > 0].copy()
     if t.empty:
         return None
     score = t[score_col].fillna(0.0)
@@ -122,8 +122,8 @@ def _prep_events(
     weight = weight[keep]
     alpha = alpha[keep]
 
-    copyable_qty = t["copyable_qty"].values
-    cap = copyable_qty
+    copyable_qty_5m_100 = t["copyable_qty_5m_100"].values
+    cap = copyable_qty_5m_100
     if cap_col is not None:
         cap = np.clip(t[cap_col].fillna(0.0).values, 0.0, None)
     price_orig = t["price"].values
@@ -167,7 +167,7 @@ def _prep_events(
         "idx": idx,
         "weight": weight,
         "alpha": alpha,
-        "copyable_qty": copyable_qty,
+        "copyable_qty_5m_100": copyable_qty_5m_100,
         "cap": cap,
         "price": price,
         "per_share": per_share,
@@ -187,11 +187,11 @@ def _sweep_events(
     """Run the sequential budget sweep for a specific ``scale`` on a prep'd frame."""
     weight = prep["weight"]
     alpha = prep["alpha"]
-    copyable_qty = prep["copyable_qty"]
+    copyable_qty_5m_100 = prep["copyable_qty_5m_100"]
     cap = prep["cap"]
     price = prep["price"]
     per_share = prep["per_share"]
-    qty = np.clip(scale * weight * alpha * copyable_qty, 0.0, cap)
+    qty = np.clip(scale * weight * alpha * copyable_qty_5m_100, 0.0, cap)
     cost = price * qty
     pnl = np.nan_to_num(per_share * qty, nan=0.0)
     group = prep.get("group")

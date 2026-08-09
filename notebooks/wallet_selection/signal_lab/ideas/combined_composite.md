@@ -90,7 +90,7 @@ threshold table is illustrative, not the headline.
 Threshold selection degenerates without a capital cap ("more trades = more PnL"
 -> near-full firing), so we built a **capital-constrained sizing backtest**
 (`signal_lab/sizing.py`): copy a score-proportional share quantity
-(`qty = scale * max(0, score) * copyable_qty`, clipped to `copyable_qty`) under a
+(`qty = scale * max(0, score) * copyable_qty_5m_100`, clipped to `copyable_qty_5m_100`) under a
 global `$10k` budget, with capital locked from `dt` until market resolution
 (`end_date_iso`). Scale is picked on validation (Sharpe of daily PnL) and reported
 on test.

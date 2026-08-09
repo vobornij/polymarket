@@ -380,7 +380,7 @@ def main():
     if args.sizing:
         # 8. Capital-constrained sizing backtest: price-exposed vs price-controlled.
         print("\n" + "=" * 60, flush=True)
-        print("Capital-constrained sizing (score-proportional, clipped to copyable_qty)", flush=True)
+        print("Capital-constrained sizing (score-proportional, clipped to copyable_qty_5m_100)", flush=True)
         print(f"budget=${args.budget:,.0f}  cost_bps={args.cost_bps}  primary={args.sizing_primary}", flush=True)
         print("=" * 60, flush=True)
         scale_grid = _parse_scale_grid(args.scale_grid)

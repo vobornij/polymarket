@@ -152,9 +152,9 @@ Each copy-default wallet gets an `alpha_w` (0 = skip, can exceed 1, capped by th
 reconstructed share-depth cap `bucket_avail_copy_qty`). Alphas fit on **train only**;
 per-scheme hyperparameters (tier count, alpha_max, alpha floor, uniform k) selected on
 **val by sim Sharpe**; test is a single pass. Source: `wallet_scaling.py`,
-`wallet_scaling_diag.py`; preprocessing `depth_cap.py` (bucket-level `avail_copy_qty`
+`wallet_scaling_diag.py`; preprocessing `depth_cap.py` (bucket-level `avail_copy_qty_5m_100`
 rebuilt from enriched shards — the processed files only kept a summed, over-counted
-`avail_copy_total_vol`). Universe: 58 copy-default wallets, val/test ~52k/~42k candidate
+`avail_copy_total_vol_5m_100`). Universe: 58 copy-default wallets, val/test ~52k/~42k candidate
 BUYs.
 
 Selected config per scheme (deployed, mean-1 normalized alphas):

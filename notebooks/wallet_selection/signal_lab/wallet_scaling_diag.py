@@ -76,8 +76,8 @@ def main():
         base["alpha_skip"] = alpha_skip
         base["alpha_tier"] = alpha_tier
         designs = [
-            ("copy_all",        "score1", 1.0, "copyable_qty"),
-            ("drop_only",       "alpha_skip", 1.0, "copyable_qty"),
+            ("copy_all",        "score1", 1.0, "copyable_qty_5m_100"),
+            ("drop_only",       "alpha_skip", 1.0, "copyable_qty_5m_100"),
             ("drop_only_depth", "alpha_skip", 1.0, "bucket_avail_copy_qty"),
             ("tier3@2-0",       "alpha_tier", 1.0, "bucket_avail_copy_qty"),
         ]
@@ -123,7 +123,7 @@ def main():
     print("\n=== cap-binding on top-tier (test) ===")
     top = test[test["tier"] == 2]
     q = top["bucket_avail_copy_qty"]
-    cq = top["copyable_qty"]
+    cq = top["copyable_qty_5m_100"]
     cap_bound = (q <= 1.05 * cq)
     print(f"  top-tier trades: {len(top):,}  depth-capped (depth<=1.05*copyable): {cap_bound.mean()*100:.1f}%  "
           f"median depth/copyable={ (q/cq).median():.2f}")
