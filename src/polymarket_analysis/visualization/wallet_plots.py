@@ -144,29 +144,37 @@ def plot_wallet_selection_pnl(
     period: str = "both",
     title: str = "Wallet selection — cohort cumulative PnL over time",
     bucket_freq: str = "1h",
+    pnl_cols: list[str] | None = None,
+    max_exposure_per_wallet: float = 100,
 ) -> go.Figure:
     """Single-panel aggregate PnL figure — one line per cohort.
 
     Each line shows the cumulative sum of ``trade_pnl`` across **all** wallets
-    in that cohort.  In ``"both"`` mode the test-period portion is reset to
-    start from zero at the split boundary (same as the train portion).
+    in that cohort.  For each column in ``pnl_cols`` an exposure-limited
+    BUY-only cumulative line is drawn (the copyable strategy PnL capped at
+    ``max_exposure_per_wallet`` per wallet).
 
     Parameters
     ----------
     df_fills:
         Fill-level trade DataFrame.  Must contain at least: ``wallet``, ``dt``,
-        ``trade_pnl``, ``is_train``.
+        ``trade_pnl``, ``is_train``, ``side``, plus each ``pnl_col`` and a
+        matching ``{col}_exposure`` column.
     wallet_cohorts:
         ``{cohort_name → DataFrame(wallet, wallet_quality)}`` as produced by
         :func:`~wallet_selection.selector.build_wallet_cohorts`.
     period:
-        Which portion of the data to plot.  One of:
-
-        Defaults to ``"both"``.
+        Which portion of the data to plot.  One of ``'train'``, ``'test'``,
+        ``'both'``.
     title:
         Figure title.
     bucket_freq:
         Pandas offset alias for time bucketing (default ``'1D'`` = daily).
+    pnl_cols:
+        Copyable PnL columns to draw as exposure-limited cumulative lines
+        (default ``['copyable_pnl']``).
+    max_exposure_per_wallet:
+        Capital budget per wallet used for the exposure-limited lines.
 
     Returns
     -------
@@ -174,6 +182,8 @@ def plot_wallet_selection_pnl(
     """
     if period not in ("train", "test", "both"):
         raise ValueError(f"period must be 'train', 'test', or 'both'; got {period!r}")
+    pnl_cols = list(pnl_cols) if pnl_cols else ["copyable_pnl"]
+    exposure_cols = [f"{c}_exposure" for c in pnl_cols]
 
     # ── bucket fills to bucket_freq per wallet ───────────────────────────────
     df = df_fills.copy()
@@ -185,12 +195,12 @@ def plot_wallet_selection_pnl(
         df = df[df["is_train"] == True]
     elif period == "test":
         df = df[df["is_train"] == False]
-    else:
-        raise ValueError(f"period must be 'train', 'test', or 'both'; got {period!r}")
+    # period == "both": keep all rows
 
     all_wallets = list({w for c in wallet_cohorts.values() for w in c["wallet"]})
-    df_sel = df[df["wallet"].isin(all_wallets)][["wallet", "bucket", "trade_pnl", "copyable_pnl", "copyable_pnl_exposure", "side"]].copy()
-    df_sel['copyable_pnl_buy'] = df_sel['copyable_pnl'] * (df_sel['side'] == 'BUY')
+    df_sel = df[df["wallet"].isin(all_wallets)][
+        ["wallet", "bucket", "trade_pnl", "side", *pnl_cols, *exposure_cols]
+    ].copy()
 
     # ── colour palette — one colour per cohort ───────────────────────────────
     palette = [
@@ -205,139 +215,61 @@ def plot_wallet_selection_pnl(
     for cohort_name, cohort_df in wallet_cohorts.items():
         color = cohort_color[cohort_name]
         wallets_in_cohort = set(cohort_df["wallet"])
+        cohort_sel = df_sel[df_sel["wallet"].isin(wallets_in_cohort)]
 
         agg_df = (
-            df_sel[df_sel["wallet"].isin(wallets_in_cohort)]
-            .groupby("bucket", sort=True)[["trade_pnl", "copyable_pnl", "copyable_pnl_buy"]]
-            .agg({
-                "trade_pnl": "sum", 
-                "copyable_pnl": "sum",
-                "copyable_pnl_buy": "sum",
-                }
-                )
+            cohort_sel.groupby("bucket", sort=True)[["trade_pnl", *pnl_cols]]
+            .sum()
             .reset_index()
         )
         agg_df["cum_pnl"] = agg_df["trade_pnl"].cumsum()
-        agg_df["cum_copyable_pnl"] = agg_df["copyable_pnl"].cumsum()
-        agg_df["cum_copyable_pnl_buy"] = agg_df["copyable_pnl_buy"].cumsum()
 
-        MAX_EXPOSURE_PER_WALLET = 100
+        if agg_df.empty:
+            continue
 
-        wallet_df = (
-            df_sel[df_sel["wallet"].isin(wallets_in_cohort)]
-            .groupby(["wallet", "bucket"], sort=True)[["trade_pnl", "copyable_pnl", "copyable_pnl_exposure"]]
-            .sum()
-            .reset_index()
+        # Total PnL (solid line)
+        fig.add_trace(
+            go.Scatter(
+                x=agg_df["bucket"],
+                y=agg_df["cum_pnl"],
+                mode="lines",
+                line={"color": color, "width": 2, "dash": "solid"},
+                name=f"{cohort_name} (total)",
+                hovertemplate=(
+                    f"{cohort_name} (total)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
+                    "cum PnL: %{y:.1f} USDC<extra></extra>"
+                ),
+            )
         )
 
-        scale = np.minimum(1, MAX_EXPOSURE_PER_WALLET / wallet_df["copyable_pnl_exposure"].replace(0, np.nan))
-
-        bucket_lim_df = (
-            wallet_df.assign(
-                copyable_pnl_limited = wallet_df["copyable_pnl"] * scale,
+        # Exposure-limited BUY-only line per copyable PnL variant
+        cohort_sel_buy = cohort_sel[cohort_sel["side"] == "BUY"]
+        for i, c in enumerate(pnl_cols):
+            wallet_df = (
+                cohort_sel_buy.groupby(["wallet", "bucket"], sort=True)[[c, f"{c}_exposure"]]
+                .sum()
+                .reset_index()
             )
-            .groupby("bucket", sort=True)
-            .sum(numeric_only=True)
-            .reset_index()
-)
-
-        bucket_lim_df["cum_copyable_pnl_limited"] = bucket_lim_df["copyable_pnl_limited"].cumsum()
-
-
-        # only buy
-        wallet_df2 = (
-            df_sel[(df_sel["wallet"].isin(wallets_in_cohort)) & (df_sel["side"] == 'BUY')]
-            .groupby(["wallet", "bucket"], sort=True)[["trade_pnl", "copyable_pnl", "copyable_pnl_exposure"]]
-            .sum()
-            .reset_index()
-        )
-
-        scale = np.minimum(1, MAX_EXPOSURE_PER_WALLET / wallet_df2["copyable_pnl_exposure"].replace(0, np.nan))
-
-        bucket_lim_df2 = (
-            wallet_df2.assign(
-                copyable_pnl_limited = wallet_df2["copyable_pnl"] * scale,
+            scale = np.minimum(
+                1, max_exposure_per_wallet / wallet_df[f"{c}_exposure"].replace(0, np.nan)
             )
-            .groupby("bucket", sort=True)
-            .sum(numeric_only=True)
-            .reset_index()
-)
+            bucket_lim_df = (
+                wallet_df.assign(**{f"{c}_limited": wallet_df[c] * scale})
+                .groupby("bucket", sort=True)[f"{c}_limited"]
+                .sum()
+                .reset_index()
+            )
+            bucket_lim_df[f"cum_{c}_limited"] = bucket_lim_df[f"{c}_limited"].cumsum()
 
-        bucket_lim_df2["cum_copyable_pnl_limited"] = bucket_lim_df2["copyable_pnl_limited"].cumsum()
-
-
-        if not agg_df.empty:
-            plot_df = agg_df[["bucket", "cum_pnl", "cum_copyable_pnl", "cum_copyable_pnl_buy"]]
-
-            # add traces for both total and copyable PnL, with different line styles
-
-            # Total PnL (solid line)
             fig.add_trace(
                 go.Scatter(
-                    x=plot_df["bucket"],
-                    y=plot_df["cum_pnl"],
+                    x=bucket_lim_df["bucket"],
+                    y=bucket_lim_df[f"cum_{c}_limited"],
                     mode="lines",
-                    line={"color": color, "width": 2, "dash": "solid"},
-                    name=f"{cohort_name} (total)",
+                    line={"color": color, "width": 2, "dash": "dot" if i == 0 else "dash"},
+                    name=f"{cohort_name} ({c}, exposure-limited only BUY)",
                     hovertemplate=(
-                        f"{cohort_name} (total)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
-                        "cum PnL: %{y:.1f} USDC<extra></extra>"
-                    ),
-                )
-            )
-            # Copyable PnL (dashed line)
-            # fig.add_trace(
-            #     go.Scatter(
-            #         x=plot_df["bucket"],
-            #         y=plot_df["cum_copyable_pnl"],
-            #         mode="lines",
-            #         line={"color": color, "width": 2, "dash": "dash"},
-            #         name=f"{cohort_name} (copyable)",
-            #         hovertemplate=(
-            #             f"{cohort_name} (copyable)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
-            #             "cum Copyable PnL: %{y:.1f} USDC<extra></extra>"
-            #         ),
-            #     )
-            # )
-            # Copyable PnL (BUY only, dashed line)
-            # fig.add_trace(
-            #     go.Scatter(
-            #         x=plot_df["bucket"],
-            #         y=plot_df["cum_copyable_pnl_buy"],
-            #         mode="lines",
-            #         line={"color": color, "width": 2, "dash": "dot"},
-            #         name=f"{cohort_name} (copyable, BUY only)",
-            #         hovertemplate=(
-            #             f"{cohort_name} (copyable, BUY only)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
-            #             "cum Copyable PnL (BUY only): %{y:.1f} USDC<extra></extra>"
-            #         ),
-            #     )
-            # )
-            # limited Copyable PnL (dotted line)
-            # fig.add_trace(
-            #     go.Scatter(
-            #         x=bucket_lim_df["bucket"],
-            #         y=bucket_lim_df["cum_copyable_pnl_limited"],
-            #         mode="lines",
-            #         line={"color": color, "width": 2, "dash": "dot"},
-            #         name=f"{cohort_name} (copyable, exposure-limited)",
-            #         hovertemplate=(
-            #             f"{cohort_name} (copyable, exposure-limited)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
-            #             "cum Copyable PnL (exposure-limited): %{y:.1f} USDC<extra></extra>"
-            #         ),
-            #     )
-            # )
-
-            # limited Copyable PnL (dotted line)
-            fig.add_trace(
-                go.Scatter(
-                    x=bucket_lim_df2["bucket"],
-                    y=bucket_lim_df2["cum_copyable_pnl_limited"],
-                    mode="lines",
-                    line={"color": color, "width": 2, "dash": "dot"},
-                    name=f"{cohort_name} (copyable, exposure-limited only BUY)",
-                    hovertemplate=(
-                        f"{cohort_name} (copyable, exposure-limited)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
+                        f"{cohort_name} ({c}, exposure-limited)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
                         "cum Copyable PnL (exposure-limited): %{y:.1f} USDC<extra></extra>"
                     ),
                 )
@@ -350,7 +282,6 @@ def plot_wallet_selection_pnl(
         xaxis_title="Date",
         yaxis_title="Cumulative PnL (USDC)",
         legend_title="Cohort",
-        # yaxis=dict(type="log", rangemode="tozero", range=[0, None]),
     )
     return fig
 
