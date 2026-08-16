@@ -8,7 +8,6 @@ can further customise or call ``.show(renderer="browser")``.
 from __future__ import annotations
 
 import pandas as pd
-import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -137,6 +136,68 @@ def plot_cumulative_pnl_by_wallet(
     return fig
 
 
+def copyable_exposure_series(
+    fills: pd.DataFrame,
+    exp_col: str,
+    *,
+    release_delay: pd.Timedelta = pd.Timedelta(days=1),
+    bucket_freq: str | None = None,
+) -> pd.DataFrame:
+    """Cumulative copy-exposure time series for one copyable variant.
+
+    Exposure is the capital tied up replicating a variant's BUY fills
+    (``exp_col`` = price × copyable qty).  It is added at each BUY fill time
+    and released one day after the contract's last trade
+    (``last_condition_trade_ts``), matching the ``trade_signals`` exposure
+    model.  With an unlimited budget the exposure is unbounded and uncapped.
+
+    Parameters
+    ----------
+    fills:
+        Fill-level DataFrame with ``dt``, ``side``, ``last_condition_trade_ts``
+        and ``exp_col``.
+    exp_col:
+        Per-fill exposure column (price × copyable qty).
+    release_delay:
+        Delay after ``last_condition_trade_ts`` before exposure is released.
+    bucket_freq:
+        Optional pandas offset alias to resample the exposure to (last value
+        per bucket).
+
+    Returns
+    -------
+    DataFrame with columns ``dt``, ``exposure``.
+    """
+    buy = fills[
+        (fills["side"] == "BUY")
+        & fills[exp_col].notna()
+        & (fills[exp_col] > 0)
+    ].copy()
+    if buy.empty:
+        return pd.DataFrame(columns=["dt", "exposure"])
+
+    add = buy[["dt", exp_col]].rename(columns={exp_col: "exposure_delta"})
+    release = buy[["last_condition_trade_ts", exp_col]].rename(
+        columns={"last_condition_trade_ts": "dt", exp_col: "exposure_delta"}
+    )
+    release["dt"] = pd.to_datetime(release["dt"], utc=True) + release_delay
+    release["exposure_delta"] = -release["exposure_delta"]
+
+    events = pd.concat([add, release], ignore_index=True).sort_values("dt")
+    events["exposure"] = events["exposure_delta"].cumsum()
+    out = events[["dt", "exposure"]]
+
+    if bucket_freq is not None:
+        out = (
+            out.set_index("dt")["exposure"]
+            .resample(bucket_freq)
+            .last()
+            .dropna()
+            .reset_index()
+        )
+    return out
+
+
 def plot_wallet_selection_pnl(
     df_fills: pd.DataFrame,
     wallet_cohorts: dict[str, pd.DataFrame],
@@ -145,21 +206,23 @@ def plot_wallet_selection_pnl(
     title: str = "Wallet selection — cohort cumulative PnL over time",
     bucket_freq: str = "1h",
     pnl_cols: list[str] | None = None,
-    max_exposure_per_wallet: float = 100,
+    plot_exposure: bool = True,
 ) -> go.Figure:
     """Single-panel aggregate PnL figure — one line per cohort.
 
     Each line shows the cumulative sum of ``trade_pnl`` across **all** wallets
-    in that cohort.  For each column in ``pnl_cols`` an exposure-limited
-    BUY-only cumulative line is drawn (the copyable strategy PnL capped at
-    ``max_exposure_per_wallet`` per wallet).
+    in that cohort.  For each column in ``pnl_cols`` an **unlimited-budget**
+    cumulative copyable-PnL line is drawn (raw, uncapped, BUY + SELL).  When
+    ``plot_exposure`` is True the capital tied up copying that variant is drawn
+    on a secondary y-axis (BUY exposure added at fill time, released one day
+    after the contract's last trade).
 
     Parameters
     ----------
     df_fills:
         Fill-level trade DataFrame.  Must contain at least: ``wallet``, ``dt``,
-        ``trade_pnl``, ``is_train``, ``side``, plus each ``pnl_col`` and a
-        matching ``{col}_exposure`` column.
+        ``trade_pnl``, ``is_train``, ``side``, ``last_condition_trade_ts``,
+        plus each ``pnl_col`` and a matching ``{col}_exposure`` column.
     wallet_cohorts:
         ``{cohort_name → DataFrame(wallet, wallet_quality)}`` as produced by
         :func:`~wallet_selection.selector.build_wallet_cohorts`.
@@ -169,12 +232,12 @@ def plot_wallet_selection_pnl(
     title:
         Figure title.
     bucket_freq:
-        Pandas offset alias for time bucketing (default ``'1D'`` = daily).
+        Pandas offset alias for time bucketing (default ``'1h'``).
     pnl_cols:
-        Copyable PnL columns to draw as exposure-limited cumulative lines
+        Copyable PnL columns to draw as unlimited cumulative lines
         (default ``['copyable_pnl']``).
-    max_exposure_per_wallet:
-        Capital budget per wallet used for the exposure-limited lines.
+    plot_exposure:
+        Whether to draw exposure lines on a secondary y-axis.
 
     Returns
     -------
@@ -188,6 +251,7 @@ def plot_wallet_selection_pnl(
     # ── bucket fills to bucket_freq per wallet ───────────────────────────────
     df = df_fills.copy()
     df["dt"] = pd.to_datetime(df["dt"], utc=True)
+    df["last_condition_trade_ts"] = pd.to_datetime(df["last_condition_trade_ts"], utc=True)
     df["bucket"] = df["dt"].dt.floor(bucket_freq)
 
     # Filter to the requested period before building aggregates
@@ -199,7 +263,8 @@ def plot_wallet_selection_pnl(
 
     all_wallets = list({w for c in wallet_cohorts.values() for w in c["wallet"]})
     df_sel = df[df["wallet"].isin(all_wallets)][
-        ["wallet", "bucket", "trade_pnl", "side", *pnl_cols, *exposure_cols]
+        ["wallet", "bucket", "dt", "trade_pnl", "side", "last_condition_trade_ts",
+         *pnl_cols, *exposure_cols]
     ].copy()
 
     # ── colour palette — one colour per cohort ───────────────────────────────
@@ -211,6 +276,14 @@ def plot_wallet_selection_pnl(
     cohort_color = {name: palette[i % len(palette)] for i, name in enumerate(cohort_names)}
 
     fig = go.Figure()
+    fig.update_layout(
+        yaxis2=dict(
+            title="Exposure (USDC)",
+            overlaying="y",
+            side="right",
+            showgrid=False,
+        ),
+    )
 
     for cohort_name, cohort_df in wallet_cohorts.items():
         color = cohort_color[cohort_name]
@@ -242,38 +315,45 @@ def plot_wallet_selection_pnl(
             )
         )
 
-        # Exposure-limited BUY-only line per copyable PnL variant
-        cohort_sel_buy = cohort_sel[cohort_sel["side"] == "BUY"]
+        # Unlimited-budget copyable PnL line per variant
         for i, c in enumerate(pnl_cols):
-            wallet_df = (
-                cohort_sel_buy.groupby(["wallet", "bucket"], sort=True)[[c, f"{c}_exposure"]]
-                .sum()
-                .reset_index()
-            )
-            scale = np.minimum(
-                1, max_exposure_per_wallet / wallet_df[f"{c}_exposure"].replace(0, np.nan)
-            )
-            bucket_lim_df = (
-                wallet_df.assign(**{f"{c}_limited": wallet_df[c] * scale})
-                .groupby("bucket", sort=True)[f"{c}_limited"]
-                .sum()
-                .reset_index()
-            )
-            bucket_lim_df[f"cum_{c}_limited"] = bucket_lim_df[f"{c}_limited"].cumsum()
+            bucket_c = agg_df[["bucket", c]].copy()
+            bucket_c[f"cum_{c}"] = bucket_c[c].cumsum()
 
             fig.add_trace(
                 go.Scatter(
-                    x=bucket_lim_df["bucket"],
-                    y=bucket_lim_df[f"cum_{c}_limited"],
+                    x=bucket_c["bucket"],
+                    y=bucket_c[f"cum_{c}"],
                     mode="lines",
                     line={"color": color, "width": 2, "dash": "dot" if i == 0 else "dash"},
-                    name=f"{cohort_name} ({c}, exposure-limited only BUY)",
+                    name=f"{cohort_name} ({c}, raw)",
                     hovertemplate=(
-                        f"{cohort_name} ({c}, exposure-limited)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
-                        "cum Copyable PnL (exposure-limited): %{y:.1f} USDC<extra></extra>"
+                        f"{cohort_name} ({c})<br>%{{x|%Y-%m-%d %H:%M}}<br>"
+                        "cum Copyable PnL (unlimited): %{y:.1f} USDC<extra></extra>"
                     ),
                 )
             )
+
+            if plot_exposure:
+                exp = copyable_exposure_series(
+                    cohort_sel, f"{c}_exposure", bucket_freq=bucket_freq
+                )
+                if not exp.empty:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=exp["dt"],
+                            y=exp["exposure"],
+                            mode="lines",
+                            line={"color": color, "width": 1.5, "dash": "dot"},
+                            opacity=0.75,
+                            yaxis="y2",
+                            name=f"{cohort_name} ({c}, exposure)",
+                            hovertemplate=(
+                                f"{cohort_name} ({c}, exposure)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
+                                "exposure: %{y:.0f} USDC<extra></extra>"
+                            ),
+                        )
+                    )
 
     fig.update_layout(
         template="plotly_white",
