@@ -98,6 +98,70 @@ COPY_DEFAULT = WalletFilter("copy_default", _select_copy_default)
 
 
 # ---------------------------------------------------------------------------
+# Strategy-selection filter (stage1_wallet_strategy_selection)
+# base_mask + copyable_mask rules ported from the Politics notebook.
+# ---------------------------------------------------------------------------
+
+STRATEGY_SELECTION_RULES = {
+    "min_total_pnl": 2_000,
+    "min_buy_roi": 0.1,
+    "min_num_buckets": 20,
+    "min_num_markets": 50,
+    "max_drawdown_to_pnl": 0.3,
+    "max_top_market_pnl_pct": 0.45,
+    "max_market_pnl_hhi": 0.20,
+    "min_recency_days": 30,
+    "min_total_notional": 5_000,
+    "min_buy_copyable_pnl": 2_000,
+    "min_buy_copyable_roi": 0.1,
+}
+
+
+def select_strategy_selection(
+    wallet_metrics: pd.DataFrame,
+    rules: dict[str, float] | None = None,
+) -> set[str]:
+    """base_mask + copyable_mask from stage1_wallet_strategy_selection."""
+    r = {**STRATEGY_SELECTION_RULES, **(rules or {})}
+    today = pd.Timestamp.today().date()
+
+    base_mask = (
+        (wallet_metrics["total_pnl"] > r["min_total_pnl"])
+        & (wallet_metrics["buy_roi"] >= r["min_buy_roi"])
+        & (wallet_metrics["num_buckets"] >= r["min_num_buckets"])
+        & (wallet_metrics["num_markets"] >= r["min_num_markets"])
+        & (wallet_metrics["max_drawdown_to_pnl"].fillna(1.0) <= r["max_drawdown_to_pnl"])
+        & (wallet_metrics["top_market_pnl_pct"] < r["max_top_market_pnl_pct"])
+        & (wallet_metrics["market_pnl_hhi"].fillna(r["max_market_pnl_hhi"]) < r["max_market_pnl_hhi"])
+        & (wallet_metrics["median_dt"].dt.date <= (today - pd.Timedelta(days=r["min_recency_days"])))
+        & (wallet_metrics["total_notional"] >= r["min_total_notional"])
+    )
+    eligible = wallet_metrics[base_mask]
+    if eligible.empty:
+        return set()
+
+    buy_copyable_roi = (
+        eligible["buy_copyable_pnl"]
+        / eligible["buy_copyable_notional"].replace(0, np.nan)
+    )
+    copyable_mask = (
+        (eligible["buy_copyable_pnl"] > r["min_buy_copyable_pnl"])
+        & (buy_copyable_roi >= r["min_buy_copyable_roi"])
+    )
+    return set(eligible.loc[copyable_mask, "wallet"])
+
+
+def _select_strategy_selection(
+    wallet_metrics: pd.DataFrame,
+    hold_metrics: pd.DataFrame,
+) -> set[str]:
+    return select_strategy_selection(wallet_metrics)
+
+
+STRATEGY_SELECTION = WalletFilter("strategy_selection", _select_strategy_selection)
+
+
+# ---------------------------------------------------------------------------
 # Non-copy-trade universe: every wallet with at least one opening BUY in
 # the train slice. Used by O2 (Finance/Politics) to test direct strategies
 # on the broad universe without filtering on quality metrics.
@@ -248,6 +312,7 @@ WALLET_FILTERS: dict[str, WalletFilter] = {
     f.name: f
     for f in [
         COPY_DEFAULT,
+        STRATEGY_SELECTION,
         ALL_BUYERS,
         WHALE,
         RETAIL,

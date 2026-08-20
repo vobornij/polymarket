@@ -56,8 +56,8 @@ OUT_DIR = NB_DIR / "signal_lab"
 import numpy as np
 import pandas as pd
 
-from lib import DEFAULT_SPLIT, DEFAULT_TAGS
-from signal_lab.filters import COPY_DEFAULT
+from lib import DEFAULT_TAGS
+from signal_lab.filters import COPY_DEFAULT, STRATEGY_SELECTION
 from signal_lab.signal_lib import spearman_rho
 from signal_lab.sizing import (
     block_bootstrap_sharpe,
@@ -80,38 +80,53 @@ pd.set_option("display.width", 1000)
 pd.set_option("display.float_format", lambda v: f"{v:.4f}")
 
 BUDGET = 10_000.0
-COST_SEL = 10.0
-MAX_LEAD_DAYS = 30  # keep only trades within this many days of contract resolution
+EXPOSURE_BUDGET = 10_000.0  # per-token (condition_id + token_id) capital cap
+MAX_LEAD_DAYS = 14  # keep only trades within this many days of contract resolution
 ALPHA_MAX_GRID = (2.0, 4.0, 8.0)
 TIER_GRID = [(nt, am, amin) for nt in (3, 4, 5) for am in ALPHA_MAX_GRID for amin in (0.0, 0.25)]
 UNIFORM_K_GRID = (0.5, 1.0, 2.0, 4.0)
+
+# Wallet filter: COPY_DEFAULT or STRATEGY_SELECTION
+COPY_FILTER = STRATEGY_SELECTION
+
+# PnL variant: (pnl_col, qty_col)
+# PNL_VARIANT = ("copyable_pnl", "copyable_qty_5m_100")
+PNL_VARIANT = ("copyable_pnl_20m_100", "copyable_qty_20m_100")
+
+PNL_COL, QTY_COL = PNL_VARIANT
+AVAIL_COL = QTY_COL.replace("copyable_qty_", "avail_copy_qty_")
+
+# Split: train <= Jun 1, test > Jun 1 (matches strategy_selection)
+SPLIT = {"train_end": "2026-06-01", "val_end": None, "test_start": "2026-06-02"}
 """
 
 CELL_LOAD_DATA = """\
-df_full, df_train, df_val, df_test, wallet_metrics, hold_metrics = load_stage1_data(tags=DEFAULT_TAGS, **DEFAULT_SPLIT, max_lead_days=MAX_LEAD_DAYS)
+df_full, df_train, df_val, df_test, wallet_metrics, hold_metrics = load_stage1_data(tags=DEFAULT_TAGS, **SPLIT, max_lead_days=MAX_LEAD_DAYS)
 print(f"df_full: {len(df_full):,}")
 print(f"  train: {len(df_train):,}  val: {len(df_val):,}  test: {len(df_test):,}")
 """
 
 CELL_COPY_UNIVERSE = """\
-wallets = set(COPY_DEFAULT(wallet_metrics, hold_metrics))
-print(f"copy_default wallets: {len(wallets)}")
+wallets = set(COPY_FILTER(wallet_metrics, hold_metrics))
+print(f"{COPY_FILTER.name} wallets: {len(wallets)}")
 """
 
 CELL_BUILD_SPLITS = """\
-splits = candidate_splits_for(df_full, wallets, **DEFAULT_SPLIT)
-splits = attach_depth_cap(splits)
+splits = candidate_splits_for(df_full, wallets, **SPLIT)
+splits = attach_depth_cap(splits, avail_col=AVAIL_COL, qty_col=QTY_COL)
+for fr in splits.values():
+    fr["token_group"] = fr["condition_id"] + "_" + fr["token_id"]
 del df_full, df_train, df_val, df_test
 
 for name in ("train", "val", "test"):
     fr = splits[name]
-    capped = (fr["bucket_avail_copy_qty"] < fr["copyable_qty_5m_100"]).mean()
+    capped = (fr["bucket_avail_copy_qty"] < fr[QTY_COL]).mean()
     print(f"{name:5s}: {len(fr):,}  trades_capped_by_depth={capped:.3f}")
 """
 
 CELL_TRAIN_STATS = """\
-train_daily = wallet_daily_pnl(splits["train"])
-st = wallet_stats(train_daily)
+train_daily = wallet_daily_pnl(splits["train"], pnl_col=PNL_COL)
+st = wallet_stats(train_daily, pnl_col=PNL_COL)
 print(f"wallets with train daily series: {len(st)}")
 st[["mu", "sigma", "n_days", "sharpe_proxy", "total_pnl"]].sort_values(
     "sharpe_proxy", ascending=False
@@ -139,32 +154,34 @@ CELL_VAL_GRID = """\
 sim_rows = []
 best_per_scheme = {}
 for name, (scheme, alpha_map, params) in schemes.items():
-    res = run_sim(splits["val"], alpha_map, COST_SEL)
-    row = sim_row(scheme, name, "val", res)
+    res = run_sim(splits["train"], alpha_map, pnl_col=PNL_COL, qty_col=QTY_COL,
+                  group_col="token_group", group_budget=EXPOSURE_BUDGET)
+    row = sim_row(scheme, name, "train", res)
     sim_rows.append(row)
     key = scheme if scheme != "kelly" else "kelly"
     if key not in best_per_scheme or row["sharpe_daily"] > best_per_scheme[key][2]:
         best_per_scheme[key] = (name, params, row["sharpe_daily"])
 
 sim_df = pd.DataFrame(sim_rows)
-sim_df[sim_df["split"] == "val"].sort_values("sharpe_daily", ascending=False).head(15)
+sim_df[sim_df["split"] == "train"].sort_values("sharpe_daily", ascending=False).head(15)
 """
 
 CELL_VAL_BEST = """\
-print("Selected per scheme (by val Sharpe):")
-for key, (name, params, val_sharpe) in best_per_scheme.items():
-    print(f"  {key:10s} -> {name:>22s}  val_sharpe={val_sharpe:.3f}")
+print("Selected per scheme (by train Sharpe):")
+for key, (name, params, train_sharpe) in best_per_scheme.items():
+    print(f"  {key:10s} -> {name:>22s}  train_sharpe={train_sharpe:.3f}")
 
 best_name = max(
     best_per_scheme.values(), key=lambda x: x[2]
 )[0]
-print(f"\\nBest val config overall: {best_name}")
+print(f"\\nBest train config overall: {best_name}")
 """
 
 CELL_TEST = """\
-for key, (name, params, _val_sharpe) in best_per_scheme.items():
+for key, (name, params, _train_sharpe) in best_per_scheme.items():
     alpha_map = schemes[name][1]
-    res = run_sim(splits["test"], alpha_map, COST_SEL)
+    res = run_sim(splits["test"], alpha_map, pnl_col=PNL_COL, qty_col=QTY_COL,
+                  group_col="token_group", group_budget=EXPOSURE_BUDGET)
     row = sim_row(schemes[name][0], name, "test", res)
     sim_rows.append(row)
 
@@ -177,21 +194,23 @@ CELL_ROBUSTNESS = """\
 ci_rows = []
 for key, (name, params, _) in best_per_scheme.items():
     alpha_map = schemes[name][1]
-    for cost in (0.0, 10.0, 30.0):
-        res = run_sim(splits["test"], alpha_map, cost)
-        point, lo, hi = block_bootstrap_sharpe(res["daily_pnl"], block_size=7, n_iter=1000, seed=42)
-        ci_rows.append({
-            "design": name, "cost_bps": cost,
-            "pnl": round(res["net_pnl"], 2),
-            "roi_w": round(res["net_pnl"] / res["notional"], 4) if res["notional"] > 0 else np.nan,
-            "sharpe_daily": round(sizing_sharpe(res["daily_pnl"], 365.0), 3),
-            "ci_lo": round(lo, 3), "ci_hi": round(hi, 3),
-        })
+    res = run_sim(splits["test"], alpha_map, pnl_col=PNL_COL, qty_col=QTY_COL,
+                  group_col="token_group", group_budget=EXPOSURE_BUDGET)
+    point, lo, hi = block_bootstrap_sharpe(res["daily_pnl"], block_size=7, n_iter=1000, seed=42)
+    ci_rows.append({
+        "design": name,
+        "pnl": round(res["net_pnl"], 2),
+        "roi_w": round(res["net_pnl"] / res["notional"], 4) if res["notional"] > 0 else np.nan,
+        "sharpe_daily": round(sizing_sharpe(res["daily_pnl"], 365.0), 3),
+        "ci_lo": round(lo, 3), "ci_hi": round(hi, 3),
+    })
 
-res_all = capital_constrained_sim(splits["test"], "score1", BUDGET, 1.0, cost_bps=COST_SEL)
+res_all = capital_constrained_sim(splits["test"], "score1", float("inf"), 1.0,
+                                  group_col="token_group", group_budget=EXPOSURE_BUDGET,
+                                  pnl_col=PNL_COL, qty_col=QTY_COL)
 point, lo, hi = block_bootstrap_sharpe(res_all["daily_pnl"], block_size=7, n_iter=1000, seed=42)
 ci_rows.append({
-    "design": "copy_all", "cost_bps": COST_SEL,
+    "design": "copy_all",
     "pnl": round(res_all["net_pnl"], 2),
     "roi_w": round(res_all["net_pnl"] / res_all["notional"], 4) if res_all["notional"] > 0 else np.nan,
     "sharpe_daily": round(sizing_sharpe(res_all["daily_pnl"], 365.0), 3),
@@ -204,11 +223,11 @@ ci_df
 """
 
 CELL_CONTRIB = """\
-test_daily = wallet_daily_pnl(splits["test"])
-test_st = test_daily.groupby("wallet")["copyable_pnl"].agg(
+test_daily = wallet_daily_pnl(splits["test"], pnl_col=PNL_COL)
+test_st = test_daily.groupby("wallet")[PNL_COL].agg(
     test_pnl="sum", test_n_days="size"
 )
-test_sharpe = test_daily.groupby("wallet")["copyable_pnl"].apply(
+test_sharpe = test_daily.groupby("wallet")[PNL_COL].apply(
     lambda s: (s.mean() / s.std() * np.sqrt(365.0)) if s.std() > 0 and len(s) >= 2 else np.nan
 ).rename("test_sharpe")
 
@@ -271,7 +290,7 @@ metadata = {
 payload = {
     "stage": 1,
     "best_params": {k: _convert(v) for k, v in best_params.items()},
-    "best_val_sharpe": float(max(best_per_scheme.values(), key=lambda x: x[2])[2]),
+    "best_train_sharpe": float(max(best_per_scheme.values(), key=lambda x: x[2])[2]),
     "test_performance": {
         "config": best_name,
         "trades": int(test_row["trades"]),
@@ -301,10 +320,24 @@ import plotly.graph_objects as go
 test = splits["test"].copy()
 alpha_map = schemes[best_name][1]
 test["alpha_w"] = test["wallet"].map(alpha_map).fillna(1.0)
-test["qty"] = np.clip(test["alpha_w"] * test["copyable_qty_5m_100"], 0.0, test["bucket_avail_copy_qty"])
-test["copy_pnl"] = test["copyable_pnl"] / test["copyable_qty_5m_100"].replace(0, np.nan) * test["qty"]
-
+test["raw_copy_pnl"] = test[PNL_COL]
+test["wallet_buy_pnl"] = test["pnl"]
 test["res_ts"] = pd.to_datetime(test["last_condition_trade_ts"], utc=True, errors="coerce")
+
+# Run sim to get taken mask — exposure/qty must respect the budget
+res = run_sim(splits["test"], alpha_map, pnl_col=PNL_COL, qty_col=QTY_COL,
+              group_col="token_group", group_budget=EXPOSURE_BUDGET)
+taken_idx = set(res["taken"].values)
+test["taken"] = test.index.isin(taken_idx)
+test["qty"] = np.clip(test["alpha_w"] * test[QTY_COL], 0.0, test["bucket_avail_copy_qty"])
+
+# Per-trade sim PnL: only for taken trades
+per_share = test[PNL_COL] / test[QTY_COL].replace(0, np.nan)
+test["copy_pnl"] = np.where(test["taken"], per_share * test["qty"], 0.0)
+
+taken = test[test["taken"]].copy()
+print(f"taken trades: {len(taken):,} / {len(test):,}  sim PnL: {taken['copy_pnl'].sum():,.0f}")
+
 window_end = test["dt"].max()
 resolved = test["res_ts"] <= window_end
 print(
@@ -312,14 +345,21 @@ print(
     f"resolved by {window_end:%Y-%m-%d}: {int(resolved.sum()):,} trades "
     f"({test.loc[resolved, 'condition_id'].nunique():,} contracts)"
 )
+print(
+    f"raw {PNL_COL} sum: {test[PNL_COL].sum():,.0f}  "
+    f"wallet pnl sum: {test['wallet_buy_pnl'].sum():,.0f}  "
+    f"sim copy_pnl sum: {taken['copy_pnl'].sum():,.0f}"
+)
 
+# Exposure (scaled): only from taken trades
+taken_resolved = taken["res_ts"] <= window_end
 open_ev = pd.DataFrame({
-    "ev_dt": test["dt"],
-    "exposure_delta": test["qty"] * test["price"],
+    "ev_dt": taken["dt"],
+    "exposure_delta": taken["qty"] * taken["price"],
 })
 close_ev = pd.DataFrame({
-    "ev_dt": test.loc[resolved, "res_ts"],
-    "exposure_delta": -(test.loc[resolved, "qty"] * test.loc[resolved, "price"]),
+    "ev_dt": taken.loc[taken_resolved, "res_ts"],
+    "exposure_delta": -(taken.loc[taken_resolved, "qty"] * taken.loc[taken_resolved, "price"]),
 })
 events = (
     pd.concat([open_ev, close_ev], ignore_index=True)
@@ -328,34 +368,66 @@ events = (
 )
 events["exposure"] = events["exposure_delta"].cumsum()
 
-pnl_trade = (
-    test[["dt", "copy_pnl"]]
-    .rename(columns={"dt": "ev_dt"})
+# Exposure (raw): all trades, unscaled
+raw_ev = pd.DataFrame({
+    "ev_dt": test["dt"],
+    "exposure_delta": test[QTY_COL] * test["price"],
+})
+raw_close = pd.DataFrame({
+    "ev_dt": test.loc[resolved, "res_ts"],
+    "exposure_delta": -(test.loc[resolved, QTY_COL] * test.loc[resolved, "price"]),
+})
+raw_events = (
+    pd.concat([raw_ev, raw_close], ignore_index=True)
     .sort_values("ev_dt")
     .reset_index(drop=True)
 )
-pnl_trade["cum_pnl"] = pnl_trade["copy_pnl"].cumsum()
+raw_events["exposure"] = raw_events["exposure_delta"].cumsum()
 
-pnl_res = (
-    test.loc[resolved, ["res_ts", "copy_pnl"]]
-    .rename(columns={"res_ts": "ev_dt"})
-    .sort_values("ev_dt")
-    .reset_index(drop=True)
-)
-pnl_res["cum_pnl"] = pnl_res["copy_pnl"].cumsum()
+def _cum_pnl(dt_col, pnl_col):
+    df = test[[dt_col, pnl_col]].rename(columns={dt_col: "ev_dt", pnl_col: "pnl"})
+    df = df.sort_values("ev_dt").reset_index(drop=True)
+    df["cum_pnl"] = df["pnl"].cumsum()
+    return df
+
+pnl_trade = _cum_pnl("dt", "copy_pnl")
+pnl_res = _cum_pnl("res_ts", "copy_pnl")
+pnl_raw_trade = _cum_pnl("dt", "raw_copy_pnl")
+pnl_raw_res = _cum_pnl("res_ts", "raw_copy_pnl")
+pnl_wallet_trade = _cum_pnl("dt", "wallet_buy_pnl")
+pnl_wallet_res = _cum_pnl("res_ts", "wallet_buy_pnl")
 
 fig = go.Figure()
-fig.add_trace(go.Scatter(x=events["ev_dt"], y=events["exposure"], mode="lines", name="exposure"))
+fig.add_trace(go.Scatter(x=events["ev_dt"], y=events["exposure"], mode="lines",
+    name="exposure (scaled)", line=dict(color="rgba(31,119,180,0.6)")))
+fig.add_trace(go.Scatter(x=raw_events["ev_dt"], y=raw_events["exposure"], mode="lines",
+    name="exposure (raw)", line=dict(dash="dash", color="rgba(31,119,180,0.6)")))
 fig.add_trace(go.Scatter(
     x=pnl_trade["ev_dt"], y=pnl_trade["cum_pnl"], mode="lines",
-    name="cum copyable pnl (trade time)",
+    name=f"cum {PNL_COL} sized (trade time)",
 ))
 fig.add_trace(go.Scatter(
     x=pnl_res["ev_dt"], y=pnl_res["cum_pnl"], mode="lines", line=dict(dash="dash"),
-    name="cum copyable pnl (resolution time)",
+    name=f"cum {PNL_COL} sized (resolution time)",
+))
+fig.add_trace(go.Scatter(
+    x=pnl_raw_trade["ev_dt"], y=pnl_raw_trade["cum_pnl"], mode="lines",
+    name=f"cum {PNL_COL} raw (trade time)", line=dict(color="rgba(255,127,14,0.6)"),
+))
+fig.add_trace(go.Scatter(
+    x=pnl_raw_res["ev_dt"], y=pnl_raw_res["cum_pnl"], mode="lines",
+    name=f"cum {PNL_COL} raw (resolution time)", line=dict(dash="dash", color="rgba(255,127,14,0.6)"),
+))
+fig.add_trace(go.Scatter(
+    x=pnl_wallet_trade["ev_dt"], y=pnl_wallet_trade["cum_pnl"], mode="lines",
+    name="cum wallet buy pnl (trade time)", line=dict(color="rgba(44,160,28,0.6)"),
+))
+fig.add_trace(go.Scatter(
+    x=pnl_wallet_res["ev_dt"], y=pnl_wallet_res["cum_pnl"], mode="lines",
+    name="cum wallet buy pnl (resolution time)", line=dict(dash="dash", color="rgba(44,160,28,0.6)"),
 ))
 fig.update_layout(
-    title=f"Test-period exposure & copyable PnL over time — {best_name}",
+    title=f"Test-period exposure & PnL over time — {best_name}",
     xaxis_title="Time",
     yaxis_title="USDC",
     template="plotly_white",
@@ -453,7 +525,7 @@ Copy qty is capped by the reconstructed share-depth ``bucket_avail_copy_qty``.
     code(CELL_SETUP),
     md("## Load data"),
     code(CELL_LOAD_DATA),
-    md("## Copy universe\n\nCandidate wallets = `COPY_DEFAULT` (copy-default filter)."),
+    md("## Copy universe\n\nCandidate wallets = `COPY_FILTER` (configurable wallet filter)."),
     code(CELL_COPY_UNIVERSE),
     md("## Share-depth cap\n\nCap = stage0 Phase 2's per-bucket max copy quantity (`avail_copy_qty_5m_100`), exported with the processed trades."),
     code(CELL_BUILD_SPLITS),

@@ -20,9 +20,10 @@ import numpy as np
 import pandas as pd
 
 
-def _per_share_pnl(df: pd.DataFrame) -> pd.Series:
-    """Dollar PnL per copied share: ``copyable_pnl / copyable_qty_5m_100``."""
-    return df["copyable_pnl"] / df["copyable_qty_5m_100"].replace(0, np.nan)
+def _per_share_pnl(df: pd.DataFrame, pnl_col: str = "copyable_pnl",
+                    qty_col: str = "copyable_qty_5m_100") -> pd.Series:
+    """Dollar PnL per copied share."""
+    return df[pnl_col] / df[qty_col].replace(0, np.nan)
 
 
 def capital_constrained_sim(
@@ -37,14 +38,17 @@ def capital_constrained_sim(
     price_mult: float | None = None,
     group_col: str | None = None,
     group_cap_frac: float | None = None,
+    group_budget: float | None = None,
+    pnl_col: str = "copyable_pnl",
+    qty_col: str = "copyable_qty_5m_100",
 ) -> dict:
     """Simulate copying ``trades`` with a score-proportional share size under a budget.
 
     Parameters
     ----------
     trades : DataFrame
-        Candidate trades with columns ``dt``, ``price``, ``copyable_qty_5m_100``,
-        ``copyable_pnl``, ``end_date_iso`` and ``score_col``.  If ``market_close``
+        Candidate trades with columns ``dt``, ``price``, ``qty_col``,
+        ``pnl_col``, ``end_date_iso`` and ``score_col``.  If ``market_close``
         is present, capital is released at ``max(end_date_iso, market_close)``
         (the market's actual close); otherwise ``end_date_iso`` alone.
     score_col : str
@@ -52,7 +56,7 @@ def capital_constrained_sim(
     budget : float
         Global capital budget in dollars.
     scale : float
-        Global size coefficient: ``qty = clip(scale * max(0, score) * alpha * copyable_qty_5m_100,
+        Global size coefficient: ``qty = clip(scale * max(0, score) * alpha * qty_col,
         0, cap)``.
     cost_bps : float
         Cost in basis points applied to the notional of taken trades.
@@ -64,28 +68,37 @@ def capital_constrained_sim(
         Per-trade multiplier column (defaults to 1.0).  Trades with ``alpha <= 0``
         are not fired.  This is the per-wallet copy scale.
     cap_col : str | None
-        Per-trade maximum quantity column (defaults to ``copyable_qty_5m_100``).  For
+        Per-trade maximum quantity column (defaults to ``qty_col``).  For
         scale > 1 this should be the share-depth cap ``bucket_avail_copy_qty``.
     price_mult : float | None
         Execution price improvement multiplier in (0, 1].  ``0.98`` models a
         limit order at ``floor(price*0.98)``: the trade pays ``price*0.98`` and
         earns an extra ``(1 - price_mult)*price`` per share over the wallet's
-        realized ``copyable_pnl``.  Pairs with ``cap_col`` = the depth at the
+        realized ``pnl_col``.  Pairs with ``cap_col`` = the depth at the
         better price (e.g. ``copyable_qty_5m_095``).
     group_col : str | None
         Column grouping trades (e.g. ``condition_id``) for a per-group capital cap.
     group_cap_frac : float | None
         Maximum fraction of ``budget`` that may be locked in any single group.
-        ``None`` disables the per-group cap.
+        ``None`` disables the per-group cap.  Ignored when ``group_budget``
+        is set.
+    group_budget : float | None
+        Absolute per-group capital cap in dollars.  Overrides
+        ``group_cap_frac * budget`` when set.  ``None`` falls back to
+        ``group_cap_frac``.
+    pnl_col : str
+        Column with per-share dollar PnL for the chosen variant (default ``copyable_pnl``).
+    qty_col : str
+        Column with copyable share quantity for the chosen variant (default ``copyable_qty_5m_100``).
 
     Returns a dict with taken-trade info, capital utilization and a daily PnL
     series realized at market resolution.
     """
     prep = _prep_events(trades, score_col, score_floor, alpha_col, cap_col,
-                        price_mult, group_col)
+                        price_mult, group_col, pnl_col, qty_col)
     if prep is None:
         return {"trades": 0, "taken": pd.Series(dtype=bool), "daily_pnl": pd.Series(dtype=float)}
-    return _sweep_events(prep, scale, budget, cost_bps, group_cap_frac)
+    return _sweep_events(prep, scale, budget, cost_bps, group_cap_frac, group_budget)
 
 
 def _prep_events(
@@ -96,13 +109,15 @@ def _prep_events(
     cap_col: str | None = None,
     price_mult: float | None = None,
     group_col: str | None = None,
+    pnl_col: str = "copyable_pnl",
+    qty_col: str = "copyable_qty_5m_100",
 ) -> dict | None:
     """Filter + pre-sort the event stream once for a ``(score_col, floor)``.
 
     Returns None if no trade survives.  The pre-sorted event arrays are shared
     across all ``scale`` values so the budget sweep can be reused cheaply.
     """
-    t = trades[trades["copyable_qty_5m_100"] > 0].copy()
+    t = trades[trades[qty_col] > 0].copy()
     if t.empty:
         return None
     score = t[score_col].fillna(0.0)
@@ -122,8 +137,8 @@ def _prep_events(
     weight = weight[keep]
     alpha = alpha[keep]
 
-    copyable_qty_5m_100 = t["copyable_qty_5m_100"].values
-    cap = copyable_qty_5m_100
+    copyable_qty = t[qty_col].values
+    cap = copyable_qty
     if cap_col is not None:
         cap = np.clip(t[cap_col].fillna(0.0).values, 0.0, None)
     price_orig = t["price"].values
@@ -131,7 +146,7 @@ def _prep_events(
         price = price_orig * price_mult
     else:
         price = price_orig
-    per_share = _per_share_pnl(t).values
+    per_share = _per_share_pnl(t, pnl_col, qty_col).values
     if price_mult is not None:
         per_share = per_share + (1.0 - price_mult) * price_orig
 
@@ -167,7 +182,7 @@ def _prep_events(
         "idx": idx,
         "weight": weight,
         "alpha": alpha,
-        "copyable_qty_5m_100": copyable_qty_5m_100,
+        "copyable_qty": copyable_qty,
         "cap": cap,
         "price": price,
         "per_share": per_share,
@@ -183,15 +198,16 @@ def _sweep_events(
     budget: float,
     cost_bps: float = 0.0,
     group_cap_frac: float | None = None,
+    group_budget: float | None = None,
 ) -> dict:
     """Run the sequential budget sweep for a specific ``scale`` on a prep'd frame."""
     weight = prep["weight"]
     alpha = prep["alpha"]
-    copyable_qty_5m_100 = prep["copyable_qty_5m_100"]
+    copyable_qty = prep["copyable_qty"]
     cap = prep["cap"]
     price = prep["price"]
     per_share = prep["per_share"]
-    qty = np.clip(scale * weight * alpha * copyable_qty_5m_100, 0.0, cap)
+    qty = np.clip(scale * weight * alpha * copyable_qty, 0.0, cap)
     cost = price * qty
     pnl = np.nan_to_num(per_share * qty, nan=0.0)
     group = prep.get("group")
@@ -202,7 +218,7 @@ def _sweep_events(
     idx = prep["idx"]
     budget = float(budget)
     tol = 1e-9
-    group_cap = group_cap_frac * budget if group_cap_frac is not None else None
+    group_cap = group_budget if group_budget is not None else (group_cap_frac * budget if group_cap_frac is not None else None)
     taken = np.zeros(n, dtype=bool)
     used = 0.0
     peak = 0.0
@@ -345,10 +361,12 @@ def select_scale(
     price_mult: float | None = None,
     group_col: str | None = None,
     group_cap_frac: float | None = None,
+    pnl_col: str = "copyable_pnl",
+    qty_col: str = "copyable_qty_5m_100",
 ) -> tuple[float, pd.DataFrame]:
     """Grid-search ``scale`` on validation by a Sharpe-like objective."""
     prep = _prep_events(val_trades, score_col, score_floor, alpha_col, cap_col,
-                        price_mult, group_col)
+                        price_mult, group_col, pnl_col, qty_col)
     rows = []
     for scale in scale_grid:
         if prep is None:

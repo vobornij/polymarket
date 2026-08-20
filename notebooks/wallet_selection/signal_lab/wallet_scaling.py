@@ -56,37 +56,40 @@ TIER_GRID = [(nt, am, amin) for nt in (3, 4, 5) for am in ALPHA_MAX_GRID for ami
 UNIFORM_K_GRID = (0.5, 1.0, 2.0, 4.0)
 
 
-def attach_depth_cap(splits: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
+def attach_depth_cap(
+    splits: dict[str, pd.DataFrame],
+    avail_col: str = "avail_copy_qty_5m_100",
+    qty_col: str = "copyable_qty_5m_100",
+) -> dict[str, pd.DataFrame]:
     """Set the share-depth cap for each candidate split from stage0's
-    per-bucket max copy quantity ``avail_copy_qty_5m_100``, aliased to
-    ``bucket_avail_copy_qty``.
+    per-bucket max copy quantity, aliased to ``bucket_avail_copy_qty``.
     """
     out = {}
     for name, fr in splits.items():
-        if "avail_copy_qty_5m_100" not in fr.columns:
+        if avail_col not in fr.columns:
             raise KeyError(
-                f"{name} split is missing 'avail_copy_qty_5m_100'; stage0 must export "
+                f"{name} split is missing '{avail_col}'; stage0 must export "
                 "the per-bucket max copy quantity."
             )
         fr = fr.copy()
-        fr["bucket_avail_copy_qty"] = fr["avail_copy_qty_5m_100"].clip(lower=0.0).fillna(fr["copyable_qty_5m_100"])
+        fr["bucket_avail_copy_qty"] = fr[avail_col].clip(lower=0.0).fillna(fr[qty_col])
         fr["score1"] = 1.0
         out[name] = fr
     return out
 
 
-def wallet_daily_pnl(frame: pd.DataFrame) -> pd.DataFrame:
+def wallet_daily_pnl(frame: pd.DataFrame, pnl_col: str = "copyable_pnl") -> pd.DataFrame:
     """Per-wallet daily pnl (copyable_pnl, alpha=1) at the sim's release date."""
     end_ns = pd.to_datetime(frame["end_date_iso"], utc=True).values.astype("datetime64[ns]").astype(np.int64)
     close_ns = pd.to_datetime(frame["market_close"], utc=True).values.astype("datetime64[ns]").astype(np.int64)
     rel = np.maximum(end_ns, close_ns).astype("datetime64[ns]")
     g = frame.assign(rel_date=pd.DatetimeIndex(rel, name="rel_date").tz_localize("UTC"))
-    return g.groupby(["wallet", "rel_date"])["copyable_pnl"].sum().reset_index()
+    return g.groupby(["wallet", "rel_date"])[pnl_col].sum().reset_index()
 
 
-def wallet_stats(train_daily: pd.DataFrame) -> pd.DataFrame:
+def wallet_stats(train_daily: pd.DataFrame, pnl_col: str = "copyable_pnl") -> pd.DataFrame:
     """Per-wallet mean/std of daily pnl (mu, sigma), with count shrinkage inputs."""
-    st = train_daily.groupby("wallet")["copyable_pnl"].agg(
+    st = train_daily.groupby("wallet")[pnl_col].agg(
         mu="mean", sigma="std", n_days="size", total_pnl="sum"
     )
     st["sigma"] = st["sigma"].fillna(0.0)
@@ -203,11 +206,19 @@ def alpha_tier(st: pd.DataFrame, n_tiers: int, alpha_max: float, alpha_min: floa
     return normalize_mean1(alpha)
 
 
-def run_sim(frame: pd.DataFrame, alpha_map: pd.Series, cost_bps: float) -> dict:
+def run_sim(frame: pd.DataFrame, alpha_map: pd.Series,
+            pnl_col: str = "copyable_pnl",
+            qty_col: str = "copyable_qty_5m_100",
+            group_col: str | None = None,
+            group_budget: float | None = None) -> dict:
     t = frame.copy(deep=True)
     t["alpha_w"] = t["wallet"].map(alpha_map).fillna(1.0)
-    res = capital_constrained_sim(t, "score1", BUDGET, 1.0, cost_bps=cost_bps,
-                                  alpha_col="alpha_w", cap_col="bucket_avail_copy_qty")
+    # When group_budget is set, disable the global cap so exposure is per-group only
+    effective_budget = float("inf") if group_budget is not None else BUDGET
+    res = capital_constrained_sim(t, "score1", effective_budget, 1.0,
+                                  alpha_col="alpha_w", cap_col="bucket_avail_copy_qty",
+                                  pnl_col=pnl_col, qty_col=qty_col,
+                                  group_col=group_col, group_budget=group_budget)
     return res
 
 

@@ -65,6 +65,37 @@ def _max_drawdown(cum: np.ndarray) -> float:
     return dd
 
 
+def _daily_sharpe(daily_pnl: pd.Series, periods_per_year: float = 365.0) -> float:
+    """Annualized Sharpe of a sparse daily-PnL series, zero-filled over the full
+    calendar-day span so inactive days count against volatility.
+
+    Returns ``float('nan')`` when there are fewer than 2 active days or the
+    (zero-filled) daily PnL has zero standard deviation.
+    """
+    if len(daily_pnl) < 2:
+        return float("nan")
+    full = pd.date_range(daily_pnl.index.min(), daily_pnl.index.max(), freq="D")
+    s = daily_pnl.reindex(full, fill_value=0.0)
+    sd = s.std()
+    if sd == 0:
+        return float("nan")
+    return float(s.mean() / sd * math.sqrt(periods_per_year))
+
+
+def _wallet_daily_sharpe(df: pd.DataFrame) -> pd.Series:
+    """Per-wallet annualized daily-PnL Sharpe from bucket rows.
+
+    *df* must contain ``wallet``, ``_date`` (daily-floored timestamp) and
+    ``pnl``.  Returns a Series indexed by wallet (wallets without rows are
+    simply absent, so alignment yields NaN for them).
+    """
+    daily_pnl = df.groupby(["wallet", "_date"], sort=False)["pnl"].sum().reset_index()
+    return daily_pnl.groupby("wallet", sort=False).apply(
+        lambda sub: _daily_sharpe(sub.set_index("_date")["pnl"]),
+        include_groups=False,
+    )
+
+
 def _wallet_metrics_from_buckets(buckets: pd.DataFrame) -> pd.DataFrame:
     """Compute per-wallet metrics from a pre-aggregated bucket DataFrame.
 
@@ -170,6 +201,10 @@ def _wallet_metrics_from_buckets(buckets: pd.DataFrame) -> pd.DataFrame:
     valid = (gw.size() >= 2) & (total_w > 0) & (res["total_pnl"] > 0)
     res["pnl_volatility"] = np.where(valid, sigma / np.sqrt(res["total_pnl"]), float("nan"))
 
+    df["_date"] = df["dt_floored"].dt.floor("D")
+    res["estimated_sharpe"] = _wallet_daily_sharpe(df)
+    res["estimated_buy_sharpe"] = _wallet_daily_sharpe(df[df["side"] == "BUY"])
+
     nz2 = abs(res["total_pnl"]) <= 0
     for c in ["top5_pnl_pct", "top10_pnl_pct", "worst5_pnl_pct", "top_market_pnl_pct",
               "median_roi", "average_roi", "buy_roi", "buy_pnl", "buy_copyable_pnl",
@@ -215,7 +250,10 @@ def compute_wallet_metrics(
         One row per wallet with columns:
         ``wallet``, ``pnl_volatility``, ``num_buckets``, ``num_markets``,
         ``total_notional``, ``total_pnl``, ``top5_pnl_pct``, ``worst5_pnl_pct``,
-        ``top_market_pnl_pct``, ``median_roi``, ``average_roi``, ``return``
+        ``top_market_pnl_pct``, ``median_roi``, ``average_roi``, ``return``,
+        ``estimated_sharpe`` (annualized daily-PnL Sharpe over all fills,
+        zero-filled for inactive days), ``estimated_buy_sharpe`` (same but
+        computed from BUY fills only)
     buckets : pd.DataFrame
         The intermediate bucket-level aggregation.
     """
@@ -266,6 +304,7 @@ def compute_wallet_metrics(
         "total_notional", "total_pnl", "top5_pnl_pct", "top10_pnl_pct",
         "worst5_pnl_pct", "top_market_pnl_pct", "top_market_abs_pnl_pct",
         "market_pnl_hhi", "positive_bucket_share", "median_roi", "average_roi", "return", "trade_count",
+        "estimated_sharpe", "estimated_buy_sharpe",
     ]
 
     if buckets.empty:

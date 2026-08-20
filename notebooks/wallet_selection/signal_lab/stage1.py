@@ -195,9 +195,11 @@ def load_stage1_data(
             f"Lead filter (<= {max_lead_days}d before resolution): "
             f"{len(df_full):,} trades"
         )
+    df_full = df_full[df_full["side"] == "BUY"].copy().reset_index(drop=True)
     if train_end is not None or val_end is not None or test_start is not None:
         df_train, df_val, df_test = split_data_at_dates(
             df_full, train_end=train_end, val_end=val_end, test_start=test_start,
+            date_col="last_condition_trade_ts",
         )
     else:
         df_train, df_val, df_test = split_data(df_full, method="chronological")
@@ -228,11 +230,17 @@ def candidate_splits_for(
     candidate_trades = df_full[
         df_full["wallet"].isin(wallets) & (df_full["side"] == "BUY")
     ].copy()
+    if "copyable_pnl_20m_100" not in candidate_trades.columns and "copyable_qty_20m_100" in candidate_trades.columns:
+        candidate_trades["copyable_pnl_20m_100"] = (
+            (candidate_trades["final_price"] - candidate_trades["price"])
+            * candidate_trades["copyable_qty_20m_100"]
+        )
     market_close = df_full.groupby("condition_id")["dt"].max()
     if train_end is not None or val_end is not None or test_start is not None:
         c_train, c_val, c_test = split_data_at_dates(
             candidate_trades,
             train_end=train_end, val_end=val_end, test_start=test_start,
+            date_col="last_condition_trade_ts",
         )
     else:
         c_train, c_val, c_test = split_data(candidate_trades, method="chronological")

@@ -40,12 +40,12 @@ except ImportError:
 _HERE = Path(__file__).resolve().parent
 DEFAULT_TRADES_DIR = (_HERE / "../../data/polygon_trades_processed").resolve()
 DEFAULT_WORKSPACE_DIR = (_HERE / "../../data/trade_signals_workspace_v2").resolve()
-DEFAULT_TAGS = {"Politics"}
+# DEFAULT_TAGS = {"Politics"}
 # DEFAULT_TAGS = {"Science"}
 # DEFAULT_TAGS = {"Celebrities", "Culture", "Music", "Movies", "Awards", "AI", "Business", "Trump"}
 # DEFAULT_TAGS = {"Politics", "Geopolitics", "Elections"}
 
-# DEFAULT_TAGS = {"Weather"}
+DEFAULT_TAGS = {"Weather"}
 
 DEFAULT_SPLIT = {
     "train_end": "2026-02-01",
@@ -225,28 +225,33 @@ def split_data_at_dates(
     train_end: str | None = None,
     val_end: str | None = None,
     test_start: str | None = None,
+    date_col: str = "end_date_iso",
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Split trades by explicit market ``end_date_iso`` boundaries.
+    """Split trades by explicit market date boundaries.
 
-    Each unique market's ``end_date_iso`` falls into exactly one bucket so
+    Each unique market's ``date_col`` falls into exactly one bucket so
     all trades for that market land in the same split.
 
     Parameters
     ----------
     train_end : str | None
-        ISO date (UTC). Markets with ``end_date_iso <= train_end`` go to
+        ISO date (UTC). Markets with ``date_col <= train_end`` go to
         train. Use ``None`` to leave the lower bound open.
     val_end : str | None
         ISO date (UTC). Markets with
-        ``train_end < end_date_iso <= val_end`` go to val. Use ``None`` to
+        ``train_end < date_col <= val_end`` go to val. Use ``None`` to
         disable the val bucket.
     test_start : str | None
-        ISO date (UTC). Markets with ``end_date_iso > val_end`` (or with
-        ``end_date_iso >= test_start`` if ``val_end`` is ``None``) go to
+        ISO date (UTC). Markets with ``date_col > val_end`` (or with
+        ``date_col >= test_start`` if ``val_end`` is ``None``) go to
         test. The default chronological split does not have a hard
         ``test_start``; this function makes it explicit.
+    date_col : str
+        Column used to determine each market's date.  Defaults to
+        ``end_date_iso``; pass ``"last_condition_trade_ts"`` to split
+        by actual resolution time.
     """
-    market_end_dates = df_full.groupby("condition_id")["end_date_iso"].first()
+    market_end_dates = df_full.groupby("condition_id")[date_col].max()
     end_ts = pd.to_datetime(market_end_dates, utc=True, errors="coerce")
 
     train_end_ts = pd.Timestamp(train_end, tz="UTC") if train_end else None
