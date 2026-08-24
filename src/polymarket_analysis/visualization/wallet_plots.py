@@ -202,6 +202,7 @@ def plot_wallet_selection_pnl(
     df_fills: pd.DataFrame,
     wallet_cohorts: dict[str, pd.DataFrame],
     *,
+    split_date: pd.Timestamp,
     period: str = "both",
     title: str = "Wallet selection — cohort cumulative PnL over time",
     bucket_freq: str = "1h",
@@ -221,11 +222,14 @@ def plot_wallet_selection_pnl(
     ----------
     df_fills:
         Fill-level trade DataFrame.  Must contain at least: ``wallet``, ``dt``,
-        ``trade_pnl``, ``is_train``, ``side``, ``last_condition_trade_ts``,
+        ``trade_pnl``, ``side``, ``last_condition_trade_ts``,
         plus each ``pnl_col`` and a matching ``{col}_exposure`` column.
     wallet_cohorts:
         ``{cohort_name → DataFrame(wallet, wallet_quality)}`` as produced by
         :func:`~wallet_selection.selector.build_wallet_cohorts`.
+    split_date:
+        Train/test boundary applied to ``last_condition_trade_ts`` (the same
+        rule used to build ``is_train`` upstream).
     period:
         Which portion of the data to plot.  One of ``'train'``, ``'test'``,
         ``'both'``.
@@ -256,9 +260,9 @@ def plot_wallet_selection_pnl(
 
     # Filter to the requested period before building aggregates
     if period == "train":
-        df = df[df["is_train"] == True]
+        df = df[df["last_condition_trade_ts"] <= pd.Timestamp(split_date)]
     elif period == "test":
-        df = df[df["is_train"] == False]
+        df = df[df["last_condition_trade_ts"] > pd.Timestamp(split_date)]
     # period == "both": keep all rows
 
     all_wallets = list({w for c in wallet_cohorts.values() for w in c["wallet"]})

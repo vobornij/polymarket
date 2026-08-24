@@ -233,7 +233,7 @@ def compute_future_better_price_qty(
 def enrich_shard(
     f,
     enriched_dir: Path,
-    token_df: pd.DataFrame,
+    token_lookup_path: Path,
     variants: list[tuple[int, float]] | None = None,
 ) -> None:
     """Enrich one raw shard with copyable-quantity metrics for ``variants``.
@@ -252,7 +252,8 @@ def enrich_shard(
     primary_qty_col = avail_copy_qty_col(variants[0][0], variants[0][1])
     if primary_qty_col in raw.columns:
         return
-    raw = raw.merge(token_df[["token_id"]], on="token_id", how="inner")
+    token_ids = pd.read_parquet(token_lookup_path, columns=["token_id"])
+    raw = raw.merge(token_ids, on="token_id", how="inner")
     print(f"{len(raw)} trades after merging with token_df for {f.name}")
 
     _KEEP_COLS = [

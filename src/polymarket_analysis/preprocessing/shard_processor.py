@@ -37,6 +37,20 @@ from polymarket_analysis.preprocessing.fill_extender import (
 )
 
 
+# Memoized per-process cache so each spawned worker loads the token lookup once
+# (avoids pickling the multi-million-row DataFrame to every task).
+_TOKEN_LOOKUP_CACHE: dict[str, pd.DataFrame] = {}
+
+
+def _load_token_lookup(path) -> pd.DataFrame:
+    key = str(path)
+    df = _TOKEN_LOOKUP_CACHE.get(key)
+    if df is None:
+        df = pd.read_parquet(path)
+        _TOKEN_LOOKUP_CACHE[key] = df
+    return df
+
+
 def _copy_read_cols() -> list[str]:
     """Raw-shard copy columns for every variant (vol/count only for factor 1.0)."""
     cols = []
@@ -70,7 +84,7 @@ _GROUP_KEYS = ["tx_hash", "wallet", "side", "token_id"]
 
 def select_top_wallets_shard(
     file_path: Path,
-    token_lookup_df: pd.DataFrame,
+    token_lookup_path: Path,
     end_train_ts: pd.Timestamp,
     top_pct: float = 0.04,
     selection_pnl: str = "copyable_pnl",
@@ -81,8 +95,10 @@ def select_top_wallets_shard(
     ----------
     file_path:
         Path to a raw-trades parquet shard.
-    token_lookup_df:
-        DataFrame with columns ``[token_id, token_winner, final_price]``.
+    token_lookup_path:
+        Path to a parquet file with columns
+        ``[token_id, token_winner, final_price, last_condition_trade_ts]``
+        (the processed/filtered token lookup).  Loaded once per worker process.
     end_train_ts:
         Train data has resolution < *end_train_ts*.
     top_pct:
@@ -102,6 +118,7 @@ def select_top_wallets_shard(
         ``candidate_wallets``, ``selected_wallets``.
     """
     print(f"Processing shard {file_path.name}...")
+    token_lookup_df = _load_token_lookup(token_lookup_path)
     raw = pd.read_parquet(file_path, columns=_PHASE1_READ_COLS)
     stats: dict = {
         "raw_rows": len(raw),
@@ -174,7 +191,7 @@ def select_top_wallets_shard(
 
 def enrich_and_group_shard(
     file_path: Path,
-    token_lookup_df: pd.DataFrame,
+    token_lookup_path: Path,
     end_train_ts: pd.Timestamp,
     top_wallets: set[str],
     wallet_pnl_metric: str = "copyable_pnl",
@@ -185,8 +202,10 @@ def enrich_and_group_shard(
     ----------
     file_path:
         Path to a raw-trades parquet shard.
-    token_lookup_df:
-        DataFrame with columns ``[token_id, token_winner, final_price]``.
+    token_lookup_path:
+        Path to a parquet file with columns
+        ``[token_id, token_winner, final_price, last_condition_trade_ts]``
+        (the processed/filtered token lookup).  Loaded once per worker process.
     end_train_ts:
         threshold of resolution time
     top_wallets:
@@ -205,6 +224,7 @@ def enrich_and_group_shard(
         rows only), restricted to *top_wallets*.
     """
     raw = pd.read_parquet(file_path, columns=_READ_COLS)
+    token_lookup_df = _load_token_lookup(token_lookup_path)
 
     if raw.empty:
         return pd.DataFrame(), {}

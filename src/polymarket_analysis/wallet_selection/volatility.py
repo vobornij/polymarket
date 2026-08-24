@@ -13,6 +13,13 @@ import math
 import numpy as np
 import pandas as pd
 
+MIN_SIMILARITY_BUCKETS = 5
+
+SIMILARITY_COPYABLE_COLS = {
+    "": "copyable_pnl",
+    "_20m_100": "copyable_pnl_20m_100",
+}
+
 
 # ---------------------------------------------------------------------------
 # Core volatility formula
@@ -96,6 +103,43 @@ def _wallet_daily_sharpe(df: pd.DataFrame, pnl_col: str = "pnl") -> pd.Series:
     )
 
 
+def _copyable_pnl_similarity(
+    df: pd.DataFrame,
+    subset: str = "all",
+    copyable_col: str = "copyable_pnl",
+) -> pd.Series:
+    """Per-wallet cosine similarity between the wallet PnL curve and the
+    copyable PnL curve, sampled as increments per ``dt_floored`` bucket.
+
+    Scale-invariant: a copyable curve that is a constant fraction of the
+    wallet curve scores 1 regardless of the fraction.  Buckets where the
+    wallet traded but nothing was copyable widen the angle, so wallets whose
+    copyable PnL is concentrated in a few trades score low.  ``subset``
+    restricts the comparison to buckets with positive (``"profit"``) or
+    negative (``"loss"``) wallet PnL.  Returns NaN for wallets with fewer
+    than ``MIN_SIMILARITY_BUCKETS`` active buckets or a zero-norm curve.
+    """
+    tb = df.groupby(["wallet", "dt_floored"], sort=False)[["pnl", copyable_col]].sum()
+    if subset == "profit":
+        tb = tb[tb["pnl"] > 0]
+    elif subset == "loss":
+        tb = tb[tb["pnl"] < 0]
+    elif subset != "all":
+        raise ValueError(f"unknown subset: {subset!r}")
+    pnl = tb["pnl"].to_numpy(dtype=float)
+    cpnl = tb[copyable_col].to_numpy(dtype=float)
+    tb["_pc"] = pnl * cpnl
+    tb["_p2"] = pnl ** 2
+    tb["_c2"] = cpnl ** 2
+    tb["_nz"] = (pnl != 0) | (cpnl != 0)
+    sim = tb.groupby("wallet", sort=False).agg(
+        pc=("_pc", "sum"), p2=("_p2", "sum"), c2=("_c2", "sum"), n=("_nz", "sum"))
+    denom = np.sqrt(sim["p2"] * sim["c2"])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        cos = sim["pc"] / denom
+    return cos.where((denom > 0) & (sim["n"] >= MIN_SIMILARITY_BUCKETS))
+
+
 def _wallet_metrics_from_buckets(buckets: pd.DataFrame) -> pd.DataFrame:
     """Compute per-wallet metrics from a pre-aggregated bucket DataFrame.
 
@@ -103,7 +147,8 @@ def _wallet_metrics_from_buckets(buckets: pd.DataFrame) -> pd.DataFrame:
     :func:`compute_wallet_metrics` (one row per (wallet, dt_floored,
     condition_id, side), wallets contiguous in appearance order) and must
     contain: ``pnl``, ``notional``, ``condition_id``, ``copyable_pnl``,
-    ``quantity``, ``copyable_qty``, ``side``, ``dt_floored``, ``trade_count``.
+    ``copyable_pnl_20m_100``, ``quantity``, ``copyable_qty``,
+    ``copyable_qty_20m``, ``side``, ``dt_floored``, ``trade_count``.
 
     All metrics are computed in a single groupby pass (no per-wallet Python
     loop).  Row order within a wallet is preserved exactly: the drawdown and
@@ -199,13 +244,20 @@ def _wallet_metrics_from_buckets(buckets: pd.DataFrame) -> pd.DataFrame:
     var = np.clip(gw["_wp2"].sum() / total_w - mean_wp ** 2, 0, None)
     sigma = np.sqrt(var)
     valid = (gw.size() >= 2) & (total_w > 0) & (res["total_pnl"] > 0)
-    res["pnl_volatility"] = np.where(valid, sigma / np.sqrt(res["total_pnl"]), float("nan"))
+    res["pnl_volatility"] = np.where(
+        valid, sigma / np.sqrt(res["total_pnl"].where(valid, 1.0)), float("nan"))
 
     df["_date"] = df["dt_floored"].dt.floor("D")
     buy = df[df["side"] == "BUY"]
     res["estimated_sharpe"] = _wallet_daily_sharpe(df)
     res["estimated_buy_sharpe"] = _wallet_daily_sharpe(buy)
     res["estimated_copyable_buy_sharpe"] = _wallet_daily_sharpe(buy, pnl_col="copyable_pnl")
+    for suffix, col in SIMILARITY_COPYABLE_COLS.items():
+        res[f"copyable_pnl_similarity{suffix}"] = _copyable_pnl_similarity(df, copyable_col=col)
+        res[f"copyable_pnl_similarity_profit{suffix}"] = _copyable_pnl_similarity(
+            df, subset="profit", copyable_col=col)
+        res[f"copyable_pnl_similarity_loss{suffix}"] = _copyable_pnl_similarity(
+            df, subset="loss", copyable_col=col)
 
     nz2 = abs(res["total_pnl"]) <= 0
     for c in ["top5_pnl_pct", "top10_pnl_pct", "worst5_pnl_pct", "top_market_pnl_pct",
@@ -242,7 +294,9 @@ def compute_wallet_metrics(
     ----------
     df_slice:
         Fill-level rows.  Must contain: ``wallet``, ``dt``, ``condition_id``,
-        ``notional``, ``pnl``.
+        ``side``, ``notional``, ``pnl``, ``quantity``, ``copyable_pnl``,
+        ``copyable_qty_5m_100``, ``avail_copy_total_vol_5m_100``,
+        ``copyable_qty_20m_100``, ``avail_copy_qty_20m_100``.
     bucket_freq:
         Pandas offset alias for the time bucket (default ``'5m'``).
 
@@ -256,7 +310,17 @@ def compute_wallet_metrics(
         ``estimated_sharpe`` (annualized daily-PnL Sharpe over all fills,
         zero-filled for inactive days), ``estimated_buy_sharpe`` (same but
         computed from BUY fills only), ``estimated_copyable_buy_sharpe``
-        (BUY fills only, using ``copyable_pnl`` instead of wallet PnL)
+        (BUY fills only, using ``copyable_pnl`` instead of wallet PnL),
+        ``copyable_pnl_similarity`` (cosine similarity between per-bucket
+        wallet PnL and copyable PnL increments; scale-invariant, 1 = the
+        copyable curve is a scaled replica of the wallet curve),
+        ``copyable_pnl_similarity_profit`` (same but restricted to buckets
+        with positive wallet PnL, so missed/degraded upside is penalized),
+        ``copyable_pnl_similarity_loss`` (same but restricted to buckets
+        with negative wallet PnL).  Each of the three similarity metrics is
+        also emitted with a ``_20m_100`` suffix, computed from the 20-minute
+        copy variant (``copyable_qty_20m_100``) instead of the base
+        ``copyable_pnl``
     buckets : pd.DataFrame
         The intermediate bucket-level aggregation.
     """
@@ -265,6 +329,11 @@ def compute_wallet_metrics(
 
     tmp = df_slice.copy()
     tmp["dt_floored"] = tmp["dt"].dt.floor(bucket_freq)
+
+    tmp["copyable_pnl_20m_100"] = tmp["pnl"] * (
+        tmp["copyable_qty_20m_100"].clip(lower=0, upper=tmp["quantity"])
+        / tmp["quantity"]
+    )
 
     buckets = (
         tmp.groupby(
@@ -276,10 +345,13 @@ def compute_wallet_metrics(
             notional=("notional", "sum"),
             pnl=("pnl", "sum"),
             copyable_pnl=("copyable_pnl", "sum"),
+            copyable_pnl_20m_100=("copyable_pnl_20m_100", "sum"),
             quantity=("quantity", "sum"),
             copyable_qty_sum=("copyable_qty_5m_100", "sum"),
+            copyable_qty_20m_sum=("copyable_qty_20m_100", "sum"),
             trade_count=("pnl", "size"),
             avail_copy_total_vol=("avail_copy_total_vol_5m_100", "max"),
+            avail_copy_qty_20m=("avail_copy_qty_20m_100", "max"),
         )
         .reset_index()
     )
@@ -298,7 +370,18 @@ def compute_wallet_metrics(
         / buckets.loc[mask, "copyable_qty_sum"]
     )
 
-    buckets = buckets.drop(columns="copyable_qty_sum")
+    buckets["copyable_qty_20m"] = np.minimum(
+        buckets["copyable_qty_20m_sum"],
+        buckets["avail_copy_qty_20m"],
+    )
+
+    mask_20m = buckets["copyable_qty_20m_sum"] > 0
+    buckets.loc[mask_20m, "copyable_pnl_20m_100"] *= (
+        buckets.loc[mask_20m, "copyable_qty_20m"]
+        / buckets.loc[mask_20m, "copyable_qty_20m_sum"]
+    )
+
+    buckets = buckets.drop(columns=["copyable_qty_sum", "copyable_qty_20m_sum"])
 
     buckets = buckets[buckets["notional"] > 0].copy()
 
@@ -308,6 +391,10 @@ def compute_wallet_metrics(
         "worst5_pnl_pct", "top_market_pnl_pct", "top_market_abs_pnl_pct",
         "market_pnl_hhi", "positive_bucket_share", "median_roi", "average_roi", "return", "trade_count",
         "estimated_sharpe", "estimated_buy_sharpe", "estimated_copyable_buy_sharpe",
+        "copyable_pnl_similarity", "copyable_pnl_similarity_profit",
+        "copyable_pnl_similarity_loss",
+        "copyable_pnl_similarity_20m_100", "copyable_pnl_similarity_profit_20m_100",
+        "copyable_pnl_similarity_loss_20m_100",
     ]
 
     if buckets.empty:

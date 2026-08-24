@@ -118,7 +118,7 @@ STRATEGY_SELECTION_RULES = {
 
 
 def select_strategy_selection(
-    wallet_metrics: pd.DataFrame,
+    candidates: pd.DataFrame,
     rules: dict[str, float] | None = None,
 ) -> set[str]:
     """base_mask + copyable_mask from stage1_wallet_strategy_selection."""
@@ -126,29 +126,29 @@ def select_strategy_selection(
     today = pd.Timestamp.today().date()
 
     base_mask = (
-        (wallet_metrics["total_pnl"] > r["min_total_pnl"])
-        & (wallet_metrics["buy_roi"] >= r["min_buy_roi"])
-        & (wallet_metrics["num_buckets"] >= r["min_num_buckets"])
-        & (wallet_metrics["num_markets"] >= r["min_num_markets"])
-        & (wallet_metrics["max_drawdown_to_pnl"].fillna(1.0) <= r["max_drawdown_to_pnl"])
-        & (wallet_metrics["top_market_pnl_pct"] < r["max_top_market_pnl_pct"])
-        & (wallet_metrics["market_pnl_hhi"].fillna(r["max_market_pnl_hhi"]) < r["max_market_pnl_hhi"])
-        & (wallet_metrics["median_dt"].dt.date <= (today - pd.Timedelta(days=r["min_recency_days"])))
-        & (wallet_metrics["total_notional"] >= r["min_total_notional"])
+        (candidates['buy_roi'] >= 0.02)
+        & (candidates['buy_pnl'] >= 300)
+        & (candidates['num_markets'] >= 20)
+        & (candidates['num_buckets'] >= 50)
+        # & (candidates['max_drawdown_to_pnl'] <= 0.2)
+        # & (candidates['market_pnl_hhi'].fillna(0.20) < 0.2)
+        # & (candidates['median_dt'].dt.date <= (pd.Timestamp.today().date() - pd.Timedelta(days=30)))
+        & (candidates['total_notional'] >= 5_000)
+        & (candidates['estimated_buy_sharpe'] >= 4)
+        & (candidates['buy_copyable_pnl'] > 300)
     )
-    eligible = wallet_metrics[base_mask]
-    if eligible.empty:
+
+    eligible_base = candidates[base_mask]
+
+    if eligible_base.empty:
         return set()
 
-    buy_copyable_roi = (
-        eligible["buy_copyable_pnl"]
-        / eligible["buy_copyable_notional"].replace(0, np.nan)
-    )
     copyable_mask = (
-        (eligible["buy_copyable_pnl"] > r["min_buy_copyable_pnl"])
-        & (buy_copyable_roi >= r["min_buy_copyable_roi"])
-    )
-    return set(eligible.loc[copyable_mask, "wallet"])
+    (eligible_base['buy_copyable_pnl'] > 1000)
+    & (eligible_base['buy_copyable_roi'] >= 0.03)
+    & (eligible_base['estimated_copyable_buy_sharpe'] >= 6)
+)
+    return set(eligible_base.loc[copyable_mask, "wallet"])
 
 
 def _select_strategy_selection(

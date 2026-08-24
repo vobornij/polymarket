@@ -1,22 +1,22 @@
 {
   "stage": 1,
   "best_params": {
-    "n_tiers": 3,
-    "alpha_max": 4.0,
-    "alpha_min": 0.25
+    "n_tiers": 5,
+    "alpha_max": 2.0,
+    "alpha_min": 0.0
   },
-  "best_train_sharpe": 3.687,
+  "best_train_sharpe": 4.48,
   "test_performance": {
-    "config": "tier3@4-0.25",
-    "trades": 6068,
-    "pnl": 3928.08,
-    "roi_w": 0.0589,
-    "sharpe_daily": 0.512,
+    "config": "tier5@2-0",
+    "trades": 1630,
+    "pnl": 964.26,
+    "roi_w": 0.074,
+    "sharpe_daily": 0.544,
     "copy_all": {
-      "trades": 6061,
-      "pnl": 916.12,
-      "roi_w": 0.0132,
-      "sharpe_daily": 0.122
+      "trades": 1631,
+      "pnl": 457.87,
+      "roi_w": 0.0324,
+      "sharpe_daily": 0.251
     }
   },
   "metadata": {
@@ -24,43 +24,43 @@
     "tags": [
       "Weather"
     ],
-    "run_timestamp": "2026-08-20T16:29:40.363955+00:00",
+    "run_timestamp": "2026-08-24T17:46:02.354686+00:00",
     "n_wallets_selected": 2,
     "n_wallets_total": 2,
     "split_sizes": {
       "train": 2302,
-      "val": 0,
-      "test": 7270
+      "val": 5136,
+      "test": 2134
     }
   },
   "wallets": [
     {
       "wallet": "0x17e0504da9a42b1ba021e5e22802f34a42bffe5b",
-      "mu": 28.355480954416812,
-      "sigma": 218.1872040672892,
+      "mu": 25.427464366739734,
+      "sigma": 142.63902420275787,
       "n_days": 135,
-      "total_pnl": 3827.98992884627,
-      "sharpe_proxy": 0.13780657539600658,
-      "alpha_kelly": 0.85224646262134,
-      "alpha_tier": 0.6938775510204082,
-      "test_pnl": -4412.46756515514,
-      "test_n_days": 255,
-      "test_sharpe": -1.5720420441347291,
-      "test_roi": -1.1526852596723074
+      "total_pnl": 3432.707689509864,
+      "sharpe_proxy": 0.18401413221745289,
+      "alpha_kelly": 0.8799200602890473,
+      "alpha_tier": 0.8571428571428571,
+      "test_pnl": -1837.5133467577784,
+      "test_n_days": 93,
+      "test_sharpe": -2.300303211220076,
+      "test_roi": -0.5352956071305175
     },
     {
       "wallet": "0x41f623e0baae41e385875a3759c474cf0622828e",
-      "mu": 89.26603933172022,
-      "sigma": 323.3989857095663,
+      "mu": 53.56281302102979,
+      "sigma": 178.8996176999949,
       "n_days": 60,
-      "total_pnl": 5355.962359903213,
-      "sharpe_proxy": 0.2557846227079073,
-      "alpha_kelly": 1.14775353737866,
-      "alpha_tier": 1.3061224489795917,
-      "test_pnl": 5712.6056959505,
-      "test_n_days": 696,
-      "test_sharpe": 1.2103181610202751,
-      "test_roi": 1.0665880960473613
+      "total_pnl": 3213.7687812617874,
+      "sharpe_proxy": 0.2811907993888037,
+      "alpha_kelly": 1.1200799397109527,
+      "alpha_tier": 1.1428571428571428,
+      "test_pnl": 2305.7294419713753,
+      "test_n_days": 222,
+      "test_sharpe": 2.180787088187074,
+      "test_roi": 0.7174534320624341
     }
   ]
 }
