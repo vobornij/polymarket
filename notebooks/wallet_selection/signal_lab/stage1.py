@@ -138,7 +138,7 @@ def _reference_frame(
     raise ValueError(f"Unknown split reference {which!r}")
 
 
-def _attach_copy_wallet_metrics(df_train: pd.DataFrame) -> pd.DataFrame:
+def attach_copy_wallet_metrics(df_train: pd.DataFrame) -> pd.DataFrame:
     wallet_metrics, _ = compute_wallet_metrics(df_train)
     wallet_metrics["copyable_pnl_factor"] = np.clip(
         wallet_metrics["copyable_pnl"]
@@ -203,7 +203,7 @@ def load_stage1_data(
         )
     else:
         df_train, df_val, df_test = split_data(df_full, method="chronological")
-    wallet_metrics = _attach_copy_wallet_metrics(df_train)
+    wallet_metrics = attach_copy_wallet_metrics(df_train)
     hold_metrics = compute_hold_time_metrics(df_train)
     return df_full, df_train, df_val, df_test, wallet_metrics, hold_metrics
 

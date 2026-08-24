@@ -126,8 +126,8 @@ def select_strategy_selection(
     today = pd.Timestamp.today().date()
 
     base_mask = (
-        (candidates['buy_roi'] >= 0.02)
-        & (candidates['buy_pnl'] >= 300)
+        (candidates['buy_roi'] >= 0.04)
+        & (candidates['buy_pnl'] >= 1000)
         & (candidates['num_markets'] >= 20)
         & (candidates['num_buckets'] >= 50)
         # & (candidates['max_drawdown_to_pnl'] <= 0.2)
@@ -143,11 +143,15 @@ def select_strategy_selection(
     if eligible_base.empty:
         return set()
 
+    buy_copyable_roi = (
+        eligible_base['buy_copyable_pnl']
+        / eligible_base['buy_copyable_notional'].replace(0, np.nan)
+    )
     copyable_mask = (
-    (eligible_base['buy_copyable_pnl'] > 1000)
-    & (eligible_base['buy_copyable_roi'] >= 0.03)
-    & (eligible_base['estimated_copyable_buy_sharpe'] >= 6)
-)
+        (eligible_base['buy_copyable_pnl'] > 1000)
+        & (buy_copyable_roi >= 0.04)
+        & (eligible_base['estimated_copyable_buy_sharpe'] >= 6)
+    )
     return set(eligible_base.loc[copyable_mask, "wallet"])
 
 
