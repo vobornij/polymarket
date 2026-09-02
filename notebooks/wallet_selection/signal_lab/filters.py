@@ -125,17 +125,37 @@ def select_strategy_selection(
     r = {**STRATEGY_SELECTION_RULES, **(rules or {})}
     today = pd.Timestamp.today().date()
 
+    candidates['buy_copyable_roi'] = (
+            candidates['buy_copyable_pnl']
+            / candidates['buy_copyable_notional'].replace(0, np.nan)
+        )
+
+
+    # Weather: 
     base_mask = (
         (candidates['buy_roi'] >= 0.04)
         & (candidates['buy_pnl'] >= 1000)
         & (candidates['num_markets'] >= 20)
         & (candidates['num_buckets'] >= 50)
-        # & (candidates['max_drawdown_to_pnl'] <= 0.2)
+        & (candidates['max_drawdown_to_pnl'] <= 0.3)
         # & (candidates['market_pnl_hhi'].fillna(0.20) < 0.2)
-        # & (candidates['median_dt'].dt.date <= (pd.Timestamp.today().date() - pd.Timedelta(days=30)))
         & (candidates['total_notional'] >= 5_000)
-        & (candidates['estimated_buy_sharpe'] >= 4)
-        & (candidates['buy_copyable_pnl'] > 300)
+        & (candidates['estimated_buy_sharpe'] >= 3)
+        & (candidates['buy_copyable_pnl'] > 100)
+        # & (candidates['buy_copyable_pnl'] >= candidates['buy_pnl'] * 0.1)
+    )
+
+    eligible_base = candidates[base_mask].copy()
+    if eligible_base.empty:
+        raise ValueError('No wallets passed base eligibility filters.')
+
+    # Weather: 
+    copyable_mask = (
+        (eligible_base['buy_copyable_pnl'] > 500)
+        & (eligible_base['buy_copyable_roi'] >= 0.04)
+        & (eligible_base['estimated_copyable_buy_sharpe'] >= 4)
+        & (eligible_base['max_copyable_drawdown_to_copyable_pnl'] <= 0.2)
+        & (eligible_base['copyable_pnl_similarity'] >= 0.40)
     )
 
     eligible_base = candidates[base_mask]
@@ -143,15 +163,7 @@ def select_strategy_selection(
     if eligible_base.empty:
         return set()
 
-    buy_copyable_roi = (
-        eligible_base['buy_copyable_pnl']
-        / eligible_base['buy_copyable_notional'].replace(0, np.nan)
-    )
-    copyable_mask = (
-        (eligible_base['buy_copyable_pnl'] > 1000)
-        & (buy_copyable_roi >= 0.04)
-        & (eligible_base['estimated_copyable_buy_sharpe'] >= 6)
-    )
+
     return set(eligible_base.loc[copyable_mask, "wallet"])
 
 
