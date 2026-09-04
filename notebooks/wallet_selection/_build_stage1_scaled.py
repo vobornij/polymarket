@@ -281,6 +281,7 @@ copy_all_row = sim_df[(sim_df["split"] == "test") & (sim_df["config"] == "copy_a
 metadata = {
     "type": "scaled_copy",
     "tags": sorted(DEFAULT_TAGS),
+    "quote_ttl": 300,
     "run_timestamp": datetime.now(timezone.utc).isoformat(),
     "n_wallets_selected": int((contrib["alpha_tier"] > 0).sum()),
     "n_wallets_total": len(wallets),

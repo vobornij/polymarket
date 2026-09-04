@@ -23,6 +23,7 @@
     "tags": [
       "Weather"
     ],
+    "quote_ttl": 300,
     "run_timestamp": "2026-09-01T21:00:47.477532+00:00",
     "n_wallets_selected": 9,
     "n_wallets_total": 16,
@@ -132,7 +133,7 @@
       "test_roi": 0.17682758690289505
     },
     {
-      "wallet": "0x96e60b753df1367cb3ee81fbb02df92bc61afece",
+      "walletwallet": "0x96e60b753df1367cb3ee81fbb02df92bc61afece",
       "mu": 1.571833051709958,
       "sigma": 12.69511704518383,
       "n_days": 616,
