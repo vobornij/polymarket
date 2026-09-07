@@ -57,7 +57,7 @@ import numpy as np
 import pandas as pd
 
 from lib import DEFAULT_TAGS
-from signal_lab.filters import COPY_DEFAULT, STRATEGY_SELECTION
+from signal_lab.filters import COPY_DEFAULT, make_strategy_selection
 from signal_lab.signal_lib import spearman_rho
 from signal_lab.sizing import (
     block_bootstrap_sharpe,
@@ -86,8 +86,9 @@ ALPHA_MAX_GRID = (2.0, 4.0, 8.0)
 TIER_GRID = [(nt, am, amin) for nt in (3, 4, 5) for am in ALPHA_MAX_GRID for amin in (0.0, 0.25)]
 UNIFORM_K_GRID = (0.5, 1.0, 2.0, 4.0)
 
-# Wallet filter: COPY_DEFAULT or STRATEGY_SELECTION
-COPY_FILTER = STRATEGY_SELECTION
+# Wallet filter: COPY_DEFAULT or strategy_selection (variant follows tags)
+STRATEGY_VARIANT = "politics" if "Politics" in DEFAULT_TAGS else "weather"
+COPY_FILTER = make_strategy_selection(STRATEGY_VARIANT)
 
 # PnL variant: (pnl_col, qty_col)
 # PNL_VARIANT = ("copyable_pnl", "copyable_qty_5m_100")
