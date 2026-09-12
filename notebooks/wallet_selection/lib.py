@@ -45,8 +45,8 @@ DEFAULT_WORKSPACE_DIR = (_HERE / "../../data/trade_signals_workspace_v2").resolv
 # DEFAULT_TAGS = {"Celebrities", "Culture", "Music", "Movies", "Awards", "AI", "Business", "Trump"}
 # DEFAULT_TAGS = {"Politics", "Geopolitics", "Elections"}
 
-DEFAULT_TAGS = {"Politics"}
-# DEFAULT_TAGS = {"Weather"}
+# DEFAULT_TAGS = {"Politics"}
+DEFAULT_TAGS = {"Weather"}
 
 DEFAULT_SPLIT = {
     "train_end": "2026-02-01",
