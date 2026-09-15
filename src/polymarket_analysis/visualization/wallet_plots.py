@@ -208,6 +208,7 @@ def plot_wallet_selection_pnl(
     bucket_freq: str = "1h",
     pnl_cols: list[str] | None = None,
     plot_exposure: bool = True,
+    exposure_fracs: tuple[float, ...] = (),
 ) -> go.Figure:
     """Single-panel aggregate PnL figure — one line per cohort.
 
@@ -217,6 +218,12 @@ def plot_wallet_selection_pnl(
     ``plot_exposure`` is True the capital tied up copying that variant is drawn
     on a secondary y-axis (BUY exposure added at fill time, released one day
     after the contract's last trade).
+
+    When ``exposure_fracs`` is non-empty the function additionally draws
+    **carved** copyable-PnL lines: for each ``frac < 1`` in the tuple, per
+    wallet, the top ``frac`` share of that wallet's trades (by ``{col}_exposure``)
+    is kept; the threshold is fitted on the **test** portion and applied to
+    whatever period the figure shows.
 
     Parameters
     ----------
@@ -242,6 +249,11 @@ def plot_wallet_selection_pnl(
         (default ``['copyable_pnl']``).
     plot_exposure:
         Whether to draw exposure lines on a secondary y-axis.
+    exposure_fracs:
+        Tuple of carve fractions in ``(0, 1]``.  For each ``frac < 1``, per wallet
+        the top ``frac`` share of that wallet's trades by ``{col}_exposure`` is
+        kept (threshold = exposure quantile at ``1 - frac``, fitted on the test
+        portion) and a carved copyable-PnL line is drawn for every ``pnl_col``.
 
     Returns
     -------
@@ -256,13 +268,28 @@ def plot_wallet_selection_pnl(
     df = df_fills.copy()
     df["dt"] = pd.to_datetime(df["dt"], utc=True)
     df["last_condition_trade_ts"] = pd.to_datetime(df["last_condition_trade_ts"], utc=True)
+    split_ts = pd.Timestamp(split_date, tz="UTC") if pd.Timestamp(split_date).tzinfo is None else pd.Timestamp(split_date)
     df["bucket"] = df["dt"].dt.floor(bucket_freq)
+
+    # Carve thresholds are fitted on the *test* portion, then applied to
+    # whatever period the figure shows, so they must use the unfiltered frame.
+    carve_thr: dict[str, dict[float, pd.Series]] = {}
+    if exposure_fracs:
+        test_df = df[df["last_condition_trade_ts"] > split_ts]
+        for c in pnl_cols:
+            exp_col = f"{c}_exposure"
+            test_valid = test_df[test_df[exp_col].notna()]
+            carve_thr[c] = {
+                frac: test_valid.groupby("wallet")[exp_col].quantile(1.0 - frac)
+                for frac in exposure_fracs
+                if frac < 1
+            }
 
     # Filter to the requested period before building aggregates
     if period == "train":
-        df = df[df["last_condition_trade_ts"] <= pd.Timestamp(split_date)]
+        df = df[df["last_condition_trade_ts"] <= split_ts]
     elif period == "test":
-        df = df[df["last_condition_trade_ts"] > pd.Timestamp(split_date)]
+        df = df[df["last_condition_trade_ts"] > split_ts]
     # period == "both": keep all rows
 
     all_wallets = list({w for c in wallet_cohorts.values() for w in c["wallet"]})
@@ -355,6 +382,37 @@ def plot_wallet_selection_pnl(
                             hovertemplate=(
                                 f"{cohort_name} ({c}, exposure)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
                                 "exposure: %{y:.0f} USDC<extra></extra>"
+                            ),
+                        )
+                    )
+
+            # Carved copyable-PnL lines: keep the top `frac` share of each
+            # wallet's trades by trade exposure (threshold fit on test).
+            if c in carve_thr:
+                for frac, thr in carve_thr[c].items():
+                    valid = cohort_sel[cohort_sel[f"{c}_exposure"].notna()]
+                    if valid.empty:
+                        continue
+                    carved = valid[valid[f"{c}_exposure"] >= valid["wallet"].map(thr)]
+                    if carved.empty:
+                        continue
+                    cagg = (
+                        carved.groupby("bucket", sort=True)[c]
+                        .sum()
+                        .reset_index()
+                    )
+                    cagg[f"cum_{c}"] = cagg[c].cumsum()
+                    fig.add_trace(
+                        go.Scatter(
+                            x=cagg["bucket"],
+                            y=cagg[f"cum_{c}"],
+                            mode="lines",
+                            line={"color": color, "width": 1, "dash": "longdash"},
+                            opacity=0.6,
+                            name=f"{cohort_name} ({c}, frac {frac:g})",
+                            hovertemplate=(
+                                f"{cohort_name} ({c}, frac {frac:g})<br>%{{x|%Y-%m-%d %H:%M}}<br>"
+                                "cum Copyable PnL (carved): %{y:.1f} USDC<extra></extra>"
                             ),
                         )
                     )
