@@ -11,6 +11,11 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from polymarket_analysis.wallet_selection.exposure import (
+    carve_threshold_map,
+    wallet_capture_thresholds,
+)
+
 
 def plot_wallet_pnl_bars(
     comparison: pd.DataFrame,
@@ -220,17 +225,21 @@ def plot_wallet_selection_pnl(
     after the contract's last trade).
 
     When ``exposure_fracs`` is non-empty the function additionally draws
-    **carved** copyable-PnL lines: for each ``frac < 1`` in the tuple, per
-    wallet, the top ``frac`` share of that wallet's trades (by ``{col}_exposure``)
-    is kept; the threshold is fitted on the **test** portion and applied to
-    whatever period the figure shows.
+    **carved** copyable-PnL lines: per wallet the deployed-capital carve
+    ``T_{w,f}`` is fitted on the **train** portion via
+    :func:`wallet_capture_thresholds` — the smallest deployed capital
+    (``position * price``) whose fills capture ``>= f`` of that wallet's train
+    copyable PnL.  Fills on the displayed period (train, test, or both) with
+    deployed capital ``>= T_{w,f}`` are kept.  The same thresholds apply to all
+    ``pnl_cols`` and are never touched by test data.
 
     Parameters
     ----------
     df_fills:
         Fill-level trade DataFrame.  Must contain at least: ``wallet``, ``dt``,
-        ``trade_pnl``, ``side``, ``last_condition_trade_ts``,
-        plus each ``pnl_col`` and a matching ``{col}_exposure`` column.
+        ``trade_pnl``, ``side``, ``last_condition_trade_ts``, ``position``,
+        ``price``, plus each ``pnl_col`` and a matching ``{col}_exposure``
+        column.
     wallet_cohorts:
         ``{cohort_name → DataFrame(wallet, wallet_quality)}`` as produced by
         :func:`~wallet_selection.selector.build_wallet_cohorts`.
@@ -246,14 +255,16 @@ def plot_wallet_selection_pnl(
         Pandas offset alias for time bucketing (default ``'1h'``).
     pnl_cols:
         Copyable PnL columns to draw as unlimited cumulative lines
-        (default ``['copyable_pnl']``).
+        (default ``['copyable_pnl']``).  The first column is the base
+        ``pnl_cols[0]`` the capture thresholds are fitted on.
     plot_exposure:
         Whether to draw exposure lines on a secondary y-axis.
     exposure_fracs:
-        Tuple of carve fractions in ``(0, 1]``.  For each ``frac < 1``, per wallet
-        the top ``frac`` share of that wallet's trades by ``{col}_exposure`` is
-        kept (threshold = exposure quantile at ``1 - frac``, fitted on the test
-        portion) and a carved copyable-PnL line is drawn for every ``pnl_col``.
+        Tuple of carve fractions in ``(0, 1]``.  For each ``frac < 1``, per
+        wallet ``T_{w,f}`` is fitted on the **train** portion (capture ``>= f``
+        of the wallet's train copyable PnL by deployed capital,
+        :func:`wallet_capture_thresholds`) and applied to the displayed period
+        by ``deployed_capital >= T_{w,f}``.
 
     Returns
     -------
@@ -271,19 +282,25 @@ def plot_wallet_selection_pnl(
     split_ts = pd.Timestamp(split_date, tz="UTC") if pd.Timestamp(split_date).tzinfo is None else pd.Timestamp(split_date)
     df["bucket"] = df["dt"].dt.floor(bucket_freq)
 
-    # Carve thresholds are fitted on the *test* portion, then applied to
-    # whatever period the figure shows, so they must use the unfiltered frame.
-    carve_thr: dict[str, dict[float, pd.Series]] = {}
+    # Carve thresholds are fitted on the *train* portion once per wallet, then
+    # applied to whatever period the figure shows. Fit on the full unfiltered
+    # frame; thresholds are per wallet so overlapping cohorts share them.
+    df["deployed_capital"] = df["position"] * df["price"]
+    carve_thr: dict[float, pd.Series] = {}
     if exposure_fracs:
-        test_df = df[df["last_condition_trade_ts"] > split_ts]
-        for c in pnl_cols:
-            exp_col = f"{c}_exposure"
-            test_valid = test_df[test_df[exp_col].notna()]
-            carve_thr[c] = {
-                frac: test_valid.groupby("wallet")[exp_col].quantile(1.0 - frac)
-                for frac in exposure_fracs
-                if frac < 1
-            }
+        fit = df[
+            (df["last_condition_trade_ts"] <= split_ts)
+            & (df["side"] == "BUY")
+            & df["deployed_capital"].notna()
+        ][["wallet", *pnl_cols, "deployed_capital"]].copy()
+        _capture = wallet_capture_thresholds(
+            fit, exposure_fracs, pnl_cols[0], "deployed_capital"
+        )
+        carve_thr = {
+            frac: carve_threshold_map(_capture, frac)
+            for frac in exposure_fracs
+            if frac < 1
+        }
 
     # Filter to the requested period before building aggregates
     if period == "train":
@@ -295,7 +312,7 @@ def plot_wallet_selection_pnl(
     all_wallets = list({w for c in wallet_cohorts.values() for w in c["wallet"]})
     df_sel = df[df["wallet"].isin(all_wallets)][
         ["wallet", "bucket", "dt", "trade_pnl", "side", "last_condition_trade_ts",
-         *pnl_cols, *exposure_cols]
+         "deployed_capital", *pnl_cols, *exposure_cols]
     ].copy()
 
     # ── colour palette — one colour per cohort ───────────────────────────────
@@ -386,36 +403,37 @@ def plot_wallet_selection_pnl(
                         )
                     )
 
-            # Carved copyable-PnL lines: keep the top `frac` share of each
-            # wallet's trades by trade exposure (threshold fit on test).
-            if c in carve_thr:
-                for frac, thr in carve_thr[c].items():
-                    valid = cohort_sel[cohort_sel[f"{c}_exposure"].notna()]
-                    if valid.empty:
-                        continue
-                    carved = valid[valid[f"{c}_exposure"] >= valid["wallet"].map(thr)]
-                    if carved.empty:
-                        continue
-                    cagg = (
-                        carved.groupby("bucket", sort=True)[c]
-                        .sum()
-                        .reset_index()
+            # Carved copyable-PnL lines: keep each wallet's fills whose deployed
+            # capital is >= T_{w,f}, trained on the train portion. Thresholds are
+            # shared across every pnl_col variant (subset is the same; only the
+            # PnL column differs).
+            valid = cohort_sel[cohort_sel["deployed_capital"].notna()]
+            carved_subsets = {}
+            for frac, thr in carve_thr.items():
+                kept = valid[valid["deployed_capital"] >= valid["wallet"].map(thr).fillna(0.0)]
+                if not kept.empty:
+                    carved_subsets[frac] = kept
+            for frac, carved in carved_subsets.items():
+                cagg = (
+                    carved.groupby("bucket", sort=True)[c]
+                    .sum()
+                    .reset_index()
+                )
+                cagg[f"cum_{c}"] = cagg[c].cumsum()
+                fig.add_trace(
+                    go.Scatter(
+                        x=cagg["bucket"],
+                        y=cagg[f"cum_{c}"],
+                        mode="lines",
+                        line={"color": color, "width": 1, "dash": "longdash"},
+                        opacity=0.6,
+                        name=f"{cohort_name} ({c}, frac {frac:g})",
+                        hovertemplate=(
+                            f"{cohort_name} ({c}, frac {frac:g})<br>%{{x|%Y-%m-%d %H:%M}}<br>"
+                            "cum Copyable PnL (carved): %{y:.1f} USDC<extra></extra>"
+                        ),
                     )
-                    cagg[f"cum_{c}"] = cagg[c].cumsum()
-                    fig.add_trace(
-                        go.Scatter(
-                            x=cagg["bucket"],
-                            y=cagg[f"cum_{c}"],
-                            mode="lines",
-                            line={"color": color, "width": 1, "dash": "longdash"},
-                            opacity=0.6,
-                            name=f"{cohort_name} ({c}, frac {frac:g})",
-                            hovertemplate=(
-                                f"{cohort_name} ({c}, frac {frac:g})<br>%{{x|%Y-%m-%d %H:%M}}<br>"
-                                "cum Copyable PnL (carved): %{y:.1f} USDC<extra></extra>"
-                            ),
-                        )
-                    )
+                )
 
     fig.update_layout(
         template="plotly_white",
