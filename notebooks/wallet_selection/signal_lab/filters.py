@@ -121,18 +121,19 @@ STRATEGY_SELECTION_RULES = {
     },
     "politics": {
         "total_pnl": 2_000,
-        "buy_roi": 0.1,
+        "buy_roi": 0.07,
         "copyable_pnl": 1_000,
         "trade_count": 300,
-        "num_buckets": 30,
+        "num_buckets": 50,
         "buy_sharpe": 3,
         "max_market_pnl_hhi": 0.20,
-        "max_drawdown_to_pnl": 0.2,
-        "recency_days": 30,
+        "max_drawdown_to_pnl": 0.3,
+        "recency_days": 90,
         "total_notional": 5_000,
         "copy_buy_copyable_pnl": 1_000,
         "copy_buy_copyable_roi": 0.05,
-        "copy_buy_sharpe": 2.3,
+        "copy_buy_sharpe": 3,
+        "copy_pnl_similarity": 0.10,
     },
 }
 
@@ -176,6 +177,7 @@ def _strategy_masks(
                 )
             )
             & (candidates["total_notional"] >= r["total_notional"])
+            & (candidates["copyable_pnl_similarity"] >= r["copy_pnl_similarity"])
         )
     else:
         base_mask = (
