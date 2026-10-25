@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 import numpy as np
+import pyarrow.parquet as pq
 import datetime
 
 # --- Fenwick Tree ---
@@ -235,6 +236,8 @@ def enrich_shard(
     enriched_dir: Path,
     token_lookup_path: Path,
     variants: list[tuple[int, float]] | None = None,
+    allowed_token_ids: set[str] | None = None,
+    allowed_condition_ids: set[str] | None = None,
 ) -> None:
     """Enrich one raw shard with copyable-quantity metrics for ``variants``.
 
@@ -247,21 +250,42 @@ def enrich_shard(
         print(f"Enriched file for {f.name} already exists, skipping...")
         return
     enriched_dir.mkdir(parents=True, exist_ok=True)
-    raw = pd.read_parquet(f)
-    print(f"{len(raw)} trades in {f.name}")
-    primary_qty_col = avail_copy_qty_col(variants[0][0], variants[0][1])
-    if primary_qty_col in raw.columns:
-        return
-    token_ids = pd.read_parquet(token_lookup_path, columns=["token_id"])
-    raw = raw.merge(token_ids, on="token_id", how="inner")
-    print(f"{len(raw)} trades after merging with token_df for {f.name}")
 
     _KEEP_COLS = [
         "tx_hash", "log_index", "block_timestamp", "condition_id", "token_id",
         "outcome", "token_winner", "wallet", "side", "price", "quantity",
         "usdc_amount", "position",
     ]
-    raw = raw[_KEEP_COLS]
+
+    primary_qty_col = avail_copy_qty_col(variants[0][0], variants[0][1])
+    parquet_file = pq.ParquetFile(f)
+    if primary_qty_col in parquet_file.schema_arrow.names:
+        return
+    print(f"{parquet_file.metadata.num_rows} trades in {f.name}")
+
+    n_after_condition = 0
+    n_after_token = 0
+    raw_parts = []
+    for batch in parquet_file.iter_batches(batch_size=1_000_000, columns=_KEEP_COLS):
+        bdf = batch.to_pandas()
+        if allowed_condition_ids is not None:
+            bdf = bdf[bdf["condition_id"].isin(allowed_condition_ids)]
+            n_after_condition += len(bdf)
+        if allowed_token_ids is not None:
+            bdf = bdf[bdf["token_id"].isin(allowed_token_ids)]
+            n_after_token += len(bdf)
+        if not bdf.empty:
+            raw_parts.append(bdf)
+    raw = pd.concat(raw_parts, ignore_index=True)
+    del raw_parts
+    if allowed_condition_ids is not None:
+        print(f"{n_after_condition} trades after condition filter for {f.name}")
+    if allowed_token_ids is not None:
+        print(f"{n_after_token} trades after token filter for {f.name}")
+
+    token_ids = pd.read_parquet(token_lookup_path, columns=["token_id"])
+    raw = raw.merge(token_ids, on="token_id", how="inner")
+    print(f"{len(raw)} trades after merging with token_df for {f.name}")
 
     raw['ts'] = pd.to_datetime(raw['block_timestamp'], utc=True, unit='s')
 
@@ -280,7 +304,9 @@ def enrich_shard(
                 factors=tuple(factors),
             )
         parts.append(out)
+    del raw, g
     enriched = pd.concat(parts, ignore_index=True)
+    del parts
 
     for window_seconds, factor in variants:
         col = avail_copy_qty_col(window_seconds, factor)

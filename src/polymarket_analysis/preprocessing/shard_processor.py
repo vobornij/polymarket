@@ -125,6 +125,7 @@ def select_top_wallets_shard(
         "in_range_rows": 0,
         "candidate_wallets": 0,
         "selected_wallets": 0,
+        "threshold": float("nan"),
     }
 
     if raw.empty:
