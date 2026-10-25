@@ -17,6 +17,7 @@ import json
 import os
 import sys
 import time
+from enum import Enum
 from pathlib import Path
 
 # Ensure the project's src/ is importable (polymarket_analysis lives there)
@@ -38,15 +39,43 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 _HERE = Path(__file__).resolve().parent
-DEFAULT_TRADES_DIR = (_HERE / "../../data/polygon_trades_processed").resolve()
 DEFAULT_WORKSPACE_DIR = (_HERE / "../../data/trade_signals_workspace_v2").resolve()
 
 # DEFAULT_TAGS = {"Science"}
 # DEFAULT_TAGS = {"Celebrities", "Culture", "Music", "Movies", "Awards", "AI", "Business", "Trump"}
 # DEFAULT_TAGS = {"Politics", "Geopolitics", "Elections"}
-
-DEFAULT_TAGS = {"Politics"}
 # DEFAULT_TAGS = {"Weather"}
+
+
+class MarketFilterMode(Enum):
+    DEFAULT = "default"
+    SPORTS = "sports"
+    CRYPTO = "crypto"
+
+
+MARKET_FILTER_MODE = MarketFilterMode.DEFAULT
+
+MODE_TRADES_DIRS = {
+    MarketFilterMode.DEFAULT: (_HERE / "../../data/polygon_trades_processed").resolve(),
+    MarketFilterMode.SPORTS: (_HERE / "../../data/polygon_trades_processed_sports").resolve(),
+    MarketFilterMode.CRYPTO: (_HERE / "../../data/polygon_trades_processed_crypto").resolve(),
+}
+MODE_TAGS = {
+    MarketFilterMode.DEFAULT: {"Politics"},
+    MarketFilterMode.SPORTS: {"Esports"},
+    MarketFilterMode.CRYPTO: {"Crypto"},
+}
+
+DEFAULT_TRADES_DIR = MODE_TRADES_DIRS[MarketFilterMode.DEFAULT]
+DEFAULT_TAGS = MODE_TAGS[MarketFilterMode.DEFAULT]
+
+
+def default_trades_dir() -> Path:
+    return MODE_TRADES_DIRS[MARKET_FILTER_MODE]
+
+
+def default_tags() -> set[str]:
+    return MODE_TAGS[MARKET_FILTER_MODE]
 
 DEFAULT_SPLIT = {
     "train_end": "2026-02-01",
@@ -61,17 +90,24 @@ RESULTS_DIR = Path(__file__).parent  # same directory as this file
 # ---------------------------------------------------------------------------
 
 
-def load_markets(trades_dir: Path = DEFAULT_TRADES_DIR, tags: set[str] | None = DEFAULT_TAGS) -> pd.DataFrame:
-    """Load and filter market metadata."""
+def load_markets(trades_dir: Path | None = None, tags: set[str] | None = None) -> pd.DataFrame:
+    """Load and filter market metadata.
+
+    DEFAULT mode: exclude Sports/Crypto primary-tag markets, keep resolved
+    markets matching ``tags`` (any-tag).  SPORTS/CRYPTO mode: the processed
+    trades dirs are already mode+resolution filtered, so the primary-tag
+    exclusion is skipped (Esports markets have primary_tag='Sports').
+    """
     from polymarket_analysis.data.data_catalogue import load_markets_processed
 
+    trades_dir = default_trades_dir() if trades_dir is None else trades_dir
+    tags = default_tags() if tags is None else tags
     mdf = load_markets_processed()
     print(f"Markets: {len(mdf)}")
 
-    mdf = mdf[
-        ~mdf["primary_tag"].isin(["Sports", "Crypto"])
-        & (mdf["winner_token_id"].notna())
-    ]
+    mdf = mdf[mdf["winner_token_id"].notna()]
+    if MARKET_FILTER_MODE == MarketFilterMode.DEFAULT:
+        mdf = mdf[~mdf["primary_tag"].isin(["Sports", "Crypto"])]
     if tags is not None:
         mdf = mdf[
             mdf["tags"].apply(lambda t: any(tag in tags for tag in t))
@@ -82,16 +118,21 @@ def load_markets(trades_dir: Path = DEFAULT_TRADES_DIR, tags: set[str] | None = 
 
 
 def load_trades(
-    trades_dir: Path = DEFAULT_TRADES_DIR,
+    trades_dir: Path | None = None,
     mdf: pd.DataFrame | None = None,
-    tags: set[str] | None = DEFAULT_TAGS,
+    tags: set[str] | None = None,
     max_shards: int | None = None,
 ) -> pd.DataFrame:
     """Load trade shards, join with markets, clean, and compute PnL columns.
 
     ``max_shards`` limits how many shards are read (fast partial loads for
-    debugging); ``None`` reads all shards.
+    debugging); ``None`` reads all shards.  ``trades_dir``/``tags`` default to
+    the current ``MARKET_FILTER_MODE``.  The ``primary_tag.isin(tags)`` filter
+    is applied in DEFAULT mode only (SPORTS/CRYPTO dirs are pre-filtered and
+    their markets' primary_tag does not match the tag name).
     """
+    trades_dir = default_trades_dir() if trades_dir is None else trades_dir
+    tags = default_tags() if tags is None else tags
     if mdf is None:
         mdf = load_markets(trades_dir, tags)
 
@@ -105,7 +146,7 @@ def load_trades(
         ignore_index=True,
     )
 
-    if tags is not None:
+    if tags is not None and MARKET_FILTER_MODE == MarketFilterMode.DEFAULT:
         df_full = df_full[df_full["primary_tag"].isin(tags)].copy().reset_index(drop=True)
 
     # Deduplicate outcome columns from merge

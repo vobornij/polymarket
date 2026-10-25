@@ -99,140 +99,135 @@ COPY_DEFAULT = WalletFilter("copy_default", _select_copy_default)
 
 # ---------------------------------------------------------------------------
 # Strategy-selection filter (stage1_wallet_strategy_selection)
-# base_mask + copyable_mask for both the Weather and Politics variants,
-# ported verbatim from the stage1_wallet notebook.
+# base_mask + copyable_mask for the Weather, Politics and Sports variants,
+# ported verbatim from the stage1_wallet notebook. Rule constants are inlined
+# in each variant's mask function.
 # ---------------------------------------------------------------------------
 
-STRATEGY_SELECTION_RULES = {
-    "weather": {
-        "buy_pnl": 1_000,
-        "buy_roi": 0.04,
-        "num_markets": 20,
-        "num_buckets": 50,
-        "max_drawdown_to_pnl": 0.3,
-        "total_notional": 5_000,
-        "buy_sharpe": 3,
-        "min_buy_copyable_pnl": 100,
-        "copy_buy_copyable_pnl": 500,
-        "copy_buy_copyable_roi": 0.04,
-        "copy_buy_sharpe": 4,
-        "copy_max_drawdown_to_pnl": 0.2,
-        "copy_pnl_similarity": 0.40,
-    },
-    "politics": {
-        "total_pnl": 2_000,
-        "buy_roi": 0.07,
-        "copyable_pnl": 1_000,
-        "trade_count": 300,
-        "num_buckets": 50,
-        "buy_sharpe": 3,
-        "max_market_pnl_hhi": 0.20,
-        "max_drawdown_to_pnl": 0.3,
-        "recency_days": 90,
-        "total_notional": 5_000,
-        "copy_buy_copyable_pnl": 1_000,
-        "copy_buy_copyable_roi": 0.05,
-        "copy_buy_sharpe": 3,
-        "copy_pnl_similarity": 0.10,
-    },
-}
+
+def _weather_strategy_masks(candidates: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+    """Weather base + copyable masks (expects ``buy_copyable_roi`` prepped)."""
+    base_mask = (
+        (candidates["buy_roi"] >= 0.04)
+        & (candidates["buy_pnl"] >= 1_000)
+        & (candidates["num_markets"] >= 20)
+        & (candidates["num_buckets"] >= 50)
+        & (candidates["max_drawdown_to_pnl"] <= 0.3)
+        & (candidates["total_notional"] >= 5_000)
+        & (candidates["estimated_buy_sharpe"] >= 3)
+        & (candidates["buy_copyable_pnl"] > 100)
+    )
+    eligible = candidates.loc[base_mask]
+    if eligible.empty:
+        return base_mask, pd.Series(False, index=eligible.index)
+    copyable_mask = (
+        (eligible["buy_copyable_pnl"] > 500)
+        & (eligible["buy_copyable_roi"] >= 0.04)
+        & (eligible["estimated_copyable_buy_sharpe"] >= 4)
+        & (eligible["max_copyable_drawdown_to_copyable_pnl"] <= 0.2)
+        & (eligible["copyable_pnl_similarity"] >= 0.40)
+    )
+    return base_mask, copyable_mask
+
+
+def _politics_strategy_masks(candidates: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+    """Politics base + copyable masks (expects ``buy_copyable_roi`` prepped)."""
+    base_mask = (
+        (candidates["total_pnl"] > 2_000)
+        & (candidates["buy_roi"] >= 0.07)
+        & (candidates["copyable_pnl"] >= 1_000)
+        & (candidates["trade_count"] >= 300)
+        & (candidates["num_buckets"] >= 50)
+        & (candidates["estimated_buy_sharpe"] >= 3)
+        & (candidates["market_pnl_hhi"].fillna(0.20) < 0.20)
+        & (candidates["max_drawdown_to_pnl"] <= 0.3)
+        & (
+            candidates["median_dt"].dt.date
+            <= (pd.Timestamp.today().date() - pd.Timedelta(days=90))
+        )
+        & (candidates["total_notional"] >= 5_000)
+        & (candidates["copyable_pnl_similarity"] >= 0.10)
+    )
+    eligible = candidates.loc[base_mask]
+    if eligible.empty:
+        return base_mask, pd.Series(False, index=eligible.index)
+    copyable_mask = (
+        (eligible["buy_copyable_pnl"] > 1_000)
+        & (eligible["buy_copyable_roi"] >= 0.05)
+        & (eligible["estimated_copyable_buy_sharpe"] > 3)
+    )
+    return base_mask, copyable_mask
+
+
+def _sports_strategy_masks(candidates: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+    """Sports (Esports) base + copyable masks (expects ``buy_copyable_roi`` prepped)."""
+    base_mask = (
+        (candidates["buy_roi"] >= 0.04)
+        & (candidates["buy_pnl"] >= 1_000)
+        & (candidates["num_markets"] >= 20)
+        & (candidates["num_buckets"] >= 50)
+        & (candidates["max_drawdown_to_pnl"] <= 0.3)
+        & (candidates["total_notional"] >= 5_000)
+        & (candidates["estimated_buy_sharpe"] >= 3)
+        & (candidates["buy_copyable_pnl"] > 500)
+    )
+    eligible = candidates.loc[base_mask]
+    if eligible.empty:
+        return base_mask, pd.Series(False, index=eligible.index)
+    copyable_mask = (
+        (eligible["buy_copyable_pnl"] > 500)
+        & (eligible["buy_copyable_roi"] >= 0.04)
+        & (candidates["max_drawdown_to_pnl"] <= 0.2)
+        & (eligible["estimated_copyable_buy_sharpe"] >= 2)
+        & (eligible["max_copyable_drawdown_to_copyable_pnl"] <= 0.5)
+        & (eligible["copyable_pnl_similarity"] >= 0.1)
+    )
+    return base_mask, copyable_mask
 
 
 def _strategy_masks(
     candidates: pd.DataFrame,
-    rules: dict[str, float] | None = None,
     variant: str = "weather",
 ) -> tuple[pd.Series, pd.Series]:
     """``(base_mask, copyable_mask)`` for the strategy-selection variant.
 
-    ``variant`` selects the Weather or Politics rules from
-    :data:`STRATEGY_SELECTION_RULES`.
+    ``variant`` is one of the named variants — weather, politics or sports —
+    each dispatched to its own mask path with its rule constants inlined.
     """
-    r = {**STRATEGY_SELECTION_RULES[variant], **(rules or {})}
-
     candidates = candidates.copy()
     candidates["buy_copyable_roi"] = (
         candidates["buy_copyable_pnl"]
         / candidates["buy_copyable_notional"].replace(0, np.nan)
     )
 
-    if variant == "politics":
-        base_mask = (
-            (candidates["total_pnl"] > r["total_pnl"])
-            & (candidates["buy_roi"] >= r["buy_roi"])
-            & (candidates["copyable_pnl"] >= r["copyable_pnl"])
-            & (candidates["trade_count"] >= r["trade_count"])
-            & (candidates["num_buckets"] >= r["num_buckets"])
-            & (candidates["estimated_buy_sharpe"] >= r["buy_sharpe"])
-            & (
-                candidates["market_pnl_hhi"].fillna(r["max_market_pnl_hhi"])
-                < r["max_market_pnl_hhi"]
-            )
-            & (candidates["max_drawdown_to_pnl"] <= r["max_drawdown_to_pnl"])
-            & (
-                candidates["median_dt"].dt.date
-                <= (
-                    pd.Timestamp.today().date()
-                    - pd.Timedelta(days=r["recency_days"])
-                )
-            )
-            & (candidates["total_notional"] >= r["total_notional"])
-            & (candidates["copyable_pnl_similarity"] >= r["copy_pnl_similarity"])
-        )
-    else:
-        base_mask = (
-            (candidates["buy_roi"] >= r["buy_roi"])
-            & (candidates["buy_pnl"] >= r["buy_pnl"])
-            & (candidates["num_markets"] >= r["num_markets"])
-            & (candidates["num_buckets"] >= r["num_buckets"])
-            & (candidates["max_drawdown_to_pnl"] <= r["max_drawdown_to_pnl"])
-            & (candidates["total_notional"] >= r["total_notional"])
-            & (candidates["estimated_buy_sharpe"] >= r["buy_sharpe"])
-            & (candidates["buy_copyable_pnl"] > r["min_buy_copyable_pnl"])
-        )
-
-    eligible = candidates.loc[base_mask]
-    if eligible.empty:
-        return base_mask, pd.Series(False, index=eligible.index)
-
-    if variant == "politics":
-        copyable_mask = (
-            (eligible["buy_copyable_pnl"] > r["copy_buy_copyable_pnl"])
-            & (eligible["buy_copyable_roi"] >= r["copy_buy_copyable_roi"])
-            & (eligible["estimated_copyable_buy_sharpe"] > r["copy_buy_sharpe"])
-        )
-    else:
-        copyable_mask = (
-            (eligible["buy_copyable_pnl"] > r["copy_buy_copyable_pnl"])
-            & (eligible["buy_copyable_roi"] >= r["copy_buy_copyable_roi"])
-            & (eligible["estimated_copyable_buy_sharpe"] >= r["copy_buy_sharpe"])
-            & (
-                eligible["max_copyable_drawdown_to_copyable_pnl"]
-                <= r["copy_max_drawdown_to_pnl"]
-            )
-            & (eligible["copyable_pnl_similarity"] >= r["copy_pnl_similarity"])
-        )
-    return base_mask, copyable_mask
+    if variant == "weather":
+        return _weather_strategy_masks(candidates)
+    elif variant == "politics":
+        return _politics_strategy_masks(candidates)
+    elif variant == "sports":
+        return _sports_strategy_masks(candidates)
+    raise ValueError(
+        f"Unknown strategy-selection variant {variant!r}; expected one of "
+        f"('weather', 'politics', 'sports')"
+    )
 
 
 def select_strategy_selection(
     candidates: pd.DataFrame,
-    rules: dict[str, float] | None = None,
     variant: str = "weather",
 ) -> set[str]:
     """Copyable wallets from stage1_wallet_strategy_selection."""
-    base_mask, copyable_mask = _strategy_masks(candidates, rules, variant)
+    base_mask, copyable_mask = _strategy_masks(candidates, variant=variant)
     eligible = candidates.loc[base_mask]
     return set(eligible.loc[copyable_mask, "wallet"])
 
 
 def select_strategy_eligible(
     candidates: pd.DataFrame,
-    rules: dict[str, float] | None = None,
     variant: str = "weather",
 ) -> set[str]:
     """Base-eligible wallets from stage1_wallet_strategy_selection."""
-    base_mask, _ = _strategy_masks(candidates, rules, variant)
+    base_mask, _ = _strategy_masks(candidates, variant=variant)
     return set(candidates.loc[base_mask, "wallet"])
 
 
@@ -254,6 +249,7 @@ def make_strategy_selection(variant: str = "weather") -> WalletFilter:
 
 
 STRATEGY_SELECTION = make_strategy_selection("weather")
+STRATEGY_SELECTION_SPORTS = make_strategy_selection("sports")
 
 
 # ---------------------------------------------------------------------------

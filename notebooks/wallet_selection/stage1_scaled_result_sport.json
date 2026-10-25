@@ -1,0 +1,117 @@
+{
+  "stage": 1,
+  "best_params": {
+    "frac": 0.2
+  },
+  "best_scale_sharpe": null,
+  "exposure_frac": 0.2,
+  "test_performance": {
+    "config": "exposure@0.2",
+    "trades": 130,
+    "pnl": 8063.5,
+    "roi_w": 0.1004,
+    "sharpe_daily": 1.553,
+    "copy_all": {
+      "trades": 1652,
+      "pnl": -44251.13,
+      "roi_w": -0.1586,
+      "sharpe_daily": -2.45
+    }
+  },
+  "exposure": {
+    "frac": 0.2,
+    "config": "exposure@0.2",
+    "val_sharpe": null,
+    "test_sharpe": 1.553,
+    "threshold_type": "wallet_capture_thresholds(train, copyable_pnl)",
+    "thresholds": {
+      "0x01aecf2e19023997c8bc338524fcc7a89ec055f8": 239.22920601877487,
+      "0x4a98b71878d80069b0b56574e73c2170d6423113": 2417.0049,
+      "0x4bf8b4c001fc2260927c34b7fe741cc6c8ac2f4a": 1183.8654483142786,
+      "0x5f5fbda3404ca6797160b6df3c8f22c4544c50e3": 578.9533029385316,
+      "0x5fd20ae6a6669a331651f7f28f4679a0cffe5ded": 4152.549914674803,
+      "0x641c917159e744d8d071d6bba78520e94a7a9a65": 7740.395800000001,
+      "0x64f4577177d590e78174b0c5364af8e80fbab38e": 599.999999,
+      "0x67bf711285642d103ce5864ce510e7a411102ea8": 588.9667077096814,
+      "0x8516cc7ba51b0dc7a332d4462df1aff47ae393a0": 8103.476428742577,
+      "0xa0e12cca77c2b18bea2449625c87bf99e295b9b4": 2340.6832914810952,
+      "0xa17c591cd26fdf747517e6b9ea37acb251a3b2e6": 2638.8548375699997,
+      "0xb305d384400e3d7a15780216a55368ea677eca4e": 2240.233366905,
+      "0xb3cb616a97ff6e1e61df14a9bd4a21a44a22dfd3": 19439.944,
+      "0xb4c05ebc0d242534f587730c5fa4baae152192d8": 5507.49,
+      "0xbf1507f54ce14730c68e7e0bac98d25924472aa9": 8821.026020399999,
+      "0xc0368da2f9a440bff7c8df7e059788a25816fba6": 296.45999900000004,
+      "0xccd9ced0e71094dca05d0501bd81ae7b49d9f849": 405.64705054999996,
+      "0xd36b9ff26e3bb85105479326dd96aa464119d4d4": 6954.999996999999,
+      "0xf0539f60c737e58ebdebd1b56ba9474f912e3939": 22709.46327,
+      "0xfab31f1a1799318bb9cd29881b33c8488e4f1f0a": 1699.8737472000005,
+      "0x162f272e66376edd22c553017122ad1f19c8585a": 765.7881370815802,
+      "0x5966db1fe50763c9e3c014d756369bad07e1f804": 83587.25568143
+    }
+  },
+  "metadata": {
+    "type": "scaled_copy",
+    "market_filter_mode": "sports",
+    "saved_strategy": "best",
+    "skip_val_calibration": true,
+    "tags": [
+      "Esports"
+    ],
+    "quote_ttl": 300,
+    "run_timestamp": "2026-10-25T13:24:33.691564+00:00",
+    "n_wallets_selected": 3,
+    "n_wallets_total": 22,
+    "split_sizes": {
+      "train": 10011,
+      "val": 0,
+      "test": 1856
+    }
+  },
+  "wallets": [
+    {
+      "wallet": "0x64f4577177d590e78174b0c5364af8e80fbab38e",
+      "mu": 67.18040384235064,
+      "sigma": 392.16002431155084,
+      "n_days": 134,
+      "total_pnl": 9002.174114874986,
+      "sharpe_proxy": 0.08584587791193092,
+      "alpha_kelly": 1.107252160654542,
+      "alpha_tier": 0.9166666666666667,
+      "test_pnl": 3698.7701303231393,
+      "test_n_days": 267.0,
+      "test_sharpe": 0.4123716513538528,
+      "test_roi": 0.4108752044921433,
+      "exposure_threshold": 599.999999
+    },
+    {
+      "wallet": "0xa0e12cca77c2b18bea2449625c87bf99e295b9b4",
+      "mu": 319.4475432568184,
+      "sigma": 929.7800262418987,
+      "n_days": 57,
+      "total_pnl": 18208.50996563865,
+      "sharpe_proxy": 0.17688895038918542,
+      "alpha_kelly": 1.5313629295191096,
+      "alpha_tier": 1.8333333333333335,
+      "test_pnl": -43488.77327066826,
+      "test_n_days": 94.0,
+      "test_sharpe": -6.772627057049418,
+      "test_roi": -2.38837627860468,
+      "exposure_threshold": 2340.6832914810952
+    },
+    {
+      "wallet": "0xb4c05ebc0d242534f587730c5fa4baae152192d8",
+      "mu": 119.88716605548363,
+      "sigma": 413.5758424083803,
+      "n_days": 45,
+      "total_pnl": 5394.9224724967635,
+      "sharpe_proxy": 0.1071224696901658,
+      "alpha_kelly": 0.9207095671432898,
+      "alpha_tier": 0.9166666666666667,
+      "test_pnl": -4461.122942976951,
+      "test_n_days": 100.0,
+      "test_sharpe": -3.9737891927776228,
+      "test_roi": -0.8269114089627221,
+      "exposure_threshold": 5507.49
+    }
+  ]
+}
