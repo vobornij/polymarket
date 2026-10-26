@@ -232,9 +232,10 @@ def _wallet_metrics_from_buckets(buckets: pd.DataFrame) -> pd.DataFrame:
     nz = abs_market_total > 0
     res["top_market_abs_pnl_pct"] = np.where(
         nz, abs_market_pnls.groupby("wallet", sort=False).max() / abs_market_total, float("nan"))
-    res["market_pnl_hhi"] = np.where(
-        nz, ((abs_market_pnls / abs_market_total) ** 2).groupby("wallet", sort=False).sum(),
-        float("nan"))
+    pos_market_pnls = market_pnls.clip(lower=0.0)
+    hhi = ((pos_market_pnls / total_pnl_s.where(total_pnl_s > 0)) ** 2).groupby(
+        "wallet", sort=False).sum()
+    res["market_pnl_hhi"] = hhi.where(total_pnl_s > 0)
 
     df["_wp"] = df["notional"].to_numpy(dtype=float) * df["pnl"].to_numpy(dtype=float)
     df["_wp2"] = df["notional"].to_numpy(dtype=float) * df["pnl"].to_numpy(dtype=float) ** 2

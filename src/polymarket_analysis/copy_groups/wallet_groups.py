@@ -120,23 +120,25 @@ def _compute_wallet_trade_stats(trades: pd.DataFrame) -> pd.DataFrame:
             .rename(columns={"copyable_pnl": "copyable_sell_pnl"})
         )
         wallet_agg = wallet_agg.merge(sell_agg, on="wallet", how="left")
-    wallet_agg["copyable_sell_pnl"] = wallet_agg.get("copyable_sell_pnl", 0.0).fillna(0.0)
+        wallet_agg["copyable_sell_pnl"] = wallet_agg["copyable_sell_pnl"].fillna(0.0)
+    else:
+        wallet_agg["copyable_sell_pnl"] = 0.0
 
-    # Market PnL HHI: concentration of absolute copyable PnL across markets.
+    # Market PnL HHI: concentration of winning-market copyable PnL
+    # relative to the wallet's total copyable PnL.
     market_pnl = (
         trades.groupby(["wallet", "condition_id"])["copyable_pnl"]
         .sum()
-        .abs()
         .reset_index()
     )
-    market_pnl.columns = ["wallet", "condition_id", "abs_pnl"]
+    market_pnl.columns = ["wallet", "condition_id", "mkt_pnl"]
 
     def _hhi(group: pd.DataFrame) -> float:
-        total = group["abs_pnl"].sum()
+        total = group["mkt_pnl"].sum()
         if total <= 0:
             return float("nan")
-        weights = group["abs_pnl"] / total
-        return float(np.square(weights).sum())
+        pos = group["mkt_pnl"].clip(lower=0.0)
+        return float(np.square(pos / total).sum())
 
     hhi_series = market_pnl.groupby("wallet").apply(_hhi, include_groups=False)
     hhi_df = hhi_series.reset_index()

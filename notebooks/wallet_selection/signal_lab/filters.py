@@ -162,11 +162,12 @@ def _politics_strategy_masks(candidates: pd.DataFrame) -> tuple[pd.Series, pd.Se
 def _sports_strategy_masks(candidates: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     """Sports (Esports) base + copyable masks (expects ``buy_copyable_roi`` prepped)."""
     base_mask = (
-        (candidates["buy_roi"] >= 0.04)
+        (candidates["buy_roi"] >= 0.07)
         & (candidates["buy_pnl"] >= 1_000)
         & (candidates["num_markets"] >= 20)
-        & (candidates["num_buckets"] >= 50)
+        & (candidates["num_buckets"] >= 100)
         & (candidates["max_drawdown_to_pnl"] <= 0.3)
+        & (candidates["market_pnl_hhi"].fillna(0.20) < 0.3)
         & (candidates["total_notional"] >= 5_000)
         & (candidates["estimated_buy_sharpe"] >= 3)
         & (candidates["buy_copyable_pnl"] > 500)
@@ -176,11 +177,11 @@ def _sports_strategy_masks(candidates: pd.DataFrame) -> tuple[pd.Series, pd.Seri
         return base_mask, pd.Series(False, index=eligible.index)
     copyable_mask = (
         (eligible["buy_copyable_pnl"] > 500)
-        & (eligible["buy_copyable_roi"] >= 0.04)
-        & (candidates["max_drawdown_to_pnl"] <= 0.2)
-        & (eligible["estimated_copyable_buy_sharpe"] >= 2)
+        & (eligible["buy_copyable_roi"] >= 0.5)
+        # & (candidates["max_drawdown_to_pnl"] <= 0.2)
+        & (eligible["estimated_copyable_buy_sharpe"] >= 3)
         & (eligible["max_copyable_drawdown_to_copyable_pnl"] <= 0.5)
-        & (eligible["copyable_pnl_similarity"] >= 0.1)
+        & (eligible["copyable_pnl_similarity"] >= 0.2)
     )
     return base_mask, copyable_mask
 

@@ -197,3 +197,56 @@ def test_similarity_20m_bucket_clip():
     _, buckets = compute_wallet_metrics(df)
     assert buckets["copyable_qty_20m"].iloc[0] == pytest.approx(1.0)
     assert buckets["copyable_pnl_20m_100"].iloc[0] == pytest.approx(1.0)
+
+
+def _market_fills(market_pnls: dict[str, list[float]], wallet: str = "0xa") -> pd.DataFrame:
+    rows = []
+    t0 = pd.Timestamp("2026-01-01", tz="UTC")
+    for cid, pnls in market_pnls.items():
+        for p in pnls:
+            rows.append({
+                "wallet": wallet,
+                "dt": t0 + pd.Timedelta(minutes=5 * len(rows)),
+                "condition_id": cid,
+                "side": "BUY",
+                "notional": 10.0,
+                "quantity": 1.0,
+                "pnl": float(p),
+                "copyable_pnl": 0.0,
+                "copyable_qty_5m_100": 0.0,
+                "avail_copy_total_vol_5m_100": 1e9,
+                "copyable_qty_20m_100": 0.0,
+                "avail_copy_qty_20m_100": 1e9,
+            })
+    return pd.DataFrame(rows)
+
+
+def _market_hhi(market_pnls: dict[str, list[float]]) -> float:
+    res, _ = compute_wallet_metrics(_market_fills(market_pnls))
+    return res.loc[res["wallet"] == "0xa", "market_pnl_hhi"].iloc[0]
+
+
+def test_hhi_single_winning_market_is_one():
+    assert _market_hhi({"c1": [1.0, 2.0, 3.0]}) == pytest.approx(1.0)
+
+
+def test_hhi_equal_winning_markets():
+    df = {"c1": [5.0], "c2": [5.0], "c3": [5.0], "c4": [5.0]}
+    assert _market_hhi(df) == pytest.approx(0.25)
+
+
+def test_hhi_offsetting_losses_not_diluted():
+    assert _market_hhi({"c1": [10.0], "c2": [10.0], "c3": [-19.0]}) == pytest.approx(200.0)
+
+
+def test_hhi_nonpositive_total_pnl_is_nan():
+    assert np.isnan(_market_hhi({"c1": [2.0], "c2": [-3.0]}))
+    assert np.isnan(_market_hhi({"c1": [2.0], "c2": [-2.0]}))
+    assert np.isnan(_market_hhi({"c1": [-1.0]}))
+
+
+def test_hhi_consistent_with_top_market_pnl_pct():
+    res, _ = compute_wallet_metrics(_market_fills({"c1": [6.0], "c2": [3.0], "c3": [1.0]}))
+    row = res.loc[res["wallet"] == "0xa"].iloc[0]
+    assert row["market_pnl_hhi"] == pytest.approx(0.36 + 0.09 + 0.01)
+    assert row["market_pnl_hhi"] >= row["top_market_pnl_pct"] ** 2
