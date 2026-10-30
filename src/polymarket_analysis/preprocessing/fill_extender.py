@@ -2,30 +2,97 @@ from pathlib import Path
 
 import pandas as pd
 import numpy as np
+import pyarrow as pa
 import pyarrow.parquet as pq
 import datetime
 
-# --- Fenwick Tree ---
-class BIT:
-    def __init__(self, n):
-        self.n = n
-        self.tree = np.zeros(n+1)
+from numba import njit
 
-    def update(self, i, delta):
-        while i <= self.n:
-            self.tree[i] += delta
-            i += i & -i
 
-    def query(self, i):
-        s = 0
-        while i > 0:
-            s += self.tree[i]
-            i -= i & -i
-        return s
+# --- Fenwick Tree primitives (JIT-compiled; indices are 1-based) ---
+@njit(cache=True)
+def _bit_update(tree, i, delta):
+    n = tree.shape[0]
+    while i < n:
+        tree[i] += delta
+        i += i & (-i)
 
-    def range_sum(self, l, r):
-        return self.query(r) - self.query(l-1)
-    
+
+@njit(cache=True)
+def _bit_prefix(tree, i):
+    s = 0.0
+    while i > 0:
+        s += tree[i]
+        i -= i & (-i)
+    return s
+
+
+@njit(cache=True)
+def _window_better_price_kernel(
+    ts, t_price, qty, pidx, is_buy_of_T, bit_n, window_ns, variant_hi, variant_lo,
+):
+    """Sliding-window "future better-price quantity" kernel (Fenwick trees).
+
+    Mirrors the original pure-Python implementation exactly:
+    - rows are pre-sorted by (ts, tx_hash);
+    - ``is_buy_of_T`` marks rows acquiring token T (stored in the trees) and rows
+      wanting a *lower* T-price (range-summed from the bottom);
+    - same-timestamp rows are excluded (removed from the window before the query);
+    - ``variant_hi``/``variant_lo`` are per-extra-factor 1-based upper/lower
+      compressed-price indices for the scaled-threshold variants.
+    """
+    n = ts.shape[0]
+    n_extra = variant_hi.shape[0]
+    tree_qty = np.zeros(bit_n + 1)
+    tree_vol = np.zeros(bit_n + 1)
+    tree_cnt = np.zeros(bit_n + 1)
+    res_qty = np.zeros(n, dtype=np.float32)
+    res_vol = np.zeros(n, dtype=np.float32)
+    res_cnt = np.zeros(n, dtype=np.float32)
+    res_var = np.zeros((n_extra, n), dtype=np.float32)
+
+    add_ptr = 0
+    remove_ptr = 0
+
+    for i in range(n):
+        end = ts[i] + window_ns
+
+        # add trades into window
+        while add_ptr < n and ts[add_ptr] <= end:
+            if is_buy_of_T[add_ptr]:
+                _bit_update(tree_qty, pidx[add_ptr], qty[add_ptr])
+                _bit_update(tree_vol, pidx[add_ptr], qty[add_ptr] * t_price[add_ptr])
+                _bit_update(tree_cnt, pidx[add_ptr], 1.0)
+            add_ptr += 1
+
+        # remove trades with the same timestamp as the current trade, since they
+        # are not "future" trades
+        while remove_ptr < n and ts[remove_ptr] == ts[i]:
+            if is_buy_of_T[remove_ptr]:
+                _bit_update(tree_qty, pidx[remove_ptr], -qty[remove_ptr])
+                _bit_update(tree_vol, pidx[remove_ptr], -qty[remove_ptr] * t_price[remove_ptr])
+                _bit_update(tree_cnt, pidx[remove_ptr], -1.0)
+            remove_ptr += 1
+
+        pi = pidx[i]
+
+        if is_buy_of_T[i]:
+            # better = lower price
+            res_qty[i] = _bit_prefix(tree_qty, pi - 1)
+            res_vol[i] = _bit_prefix(tree_vol, pi - 1)
+            res_cnt[i] = _bit_prefix(tree_cnt, pi - 1)
+            for v in range(n_extra):
+                res_var[v, i] = _bit_prefix(tree_qty, variant_hi[v, i])
+        else:
+            # better = higher price
+            res_qty[i] = _bit_prefix(tree_qty, bit_n) - _bit_prefix(tree_qty, pi)
+            res_vol[i] = _bit_prefix(tree_vol, bit_n) - _bit_prefix(tree_vol, pi)
+            res_cnt[i] = _bit_prefix(tree_cnt, bit_n) - _bit_prefix(tree_cnt, pi)
+            for v in range(n_extra):
+                res_var[v, i] = _bit_prefix(tree_qty, bit_n) - _bit_prefix(tree_qty, variant_lo[v, i])
+
+    return res_qty, res_vol, res_cnt, res_var
+
 
 def _factor_code(f: float) -> str:
     """3-digit code for a scale factor, e.g. 0.98 -> '098' (percent, zero-padded)."""
@@ -99,134 +166,87 @@ def compute_future_better_price_qty(
     counted (same-timestamp trades are excluded), regardless of factor.
     """
     window_seconds = int(window.total_seconds())
-    extra_factors = [f for f in factors if abs(f - 1.0) > 1e-12]
+    return _enrich_group(df, {window_seconds: list(factors)})
 
-    qty_col = avail_copy_qty_col(window_seconds, 1.0)
-    vol_col = avail_copy_total_vol_col(window_seconds, 1.0)
-    count_col = avail_copy_count_col(window_seconds, 1.0)
 
+def _enrich_group(df: pd.DataFrame, windows: dict[int, list[float]]) -> pd.DataFrame:
+    """Enrich one condition group for several lookback windows in one prep pass.
+
+    Shared across windows: the (ts, tx_hash) sort, array extraction, price
+    compression and the per-factor scaled thresholds (these do not depend on
+    the window).  The JIT kernel is then run once per window.
+    """
     df = df.sort_values(["ts", "tx_hash"]).reset_index(drop=True)
     if df.empty:
-        df[qty_col] = []
-        df[vol_col] = []
-        df[count_col] = []
-        for f in extra_factors:
-            df[avail_copy_qty_col(window_seconds, f)] = []
+        for window_seconds, factors in windows.items():
+            df[avail_copy_qty_col(window_seconds, 1.0)] = np.zeros(0, dtype=np.float32)
+            df[avail_copy_total_vol_col(window_seconds, 1.0)] = np.zeros(0, dtype=np.float32)
+            df[avail_copy_count_col(window_seconds, 1.0)] = np.zeros(0, dtype=np.float32)
+            for f in factors:
+                if abs(f - 1.0) > 1e-12:
+                    df[avail_copy_qty_col(window_seconds, f)] = np.zeros(0, dtype=np.float32)
         return df
 
     # tree will store only "BUY T" trades. Full df contains both sides
     T = df["token_id"].iloc[0]
 
-    df['T_price'] = np.nan
-
-    mask1 = (df['token_id'] == T)
-    mask2 = (df['token_id'] != T)
-
-    df.loc[mask1, 'T_price'] = df.loc[mask1, 'price']
-    df.loc[mask2, 'T_price'] = 1 - df.loc[mask2, 'price']
-
-
-    ts = df["ts"].values
-    t_price = df["T_price"].values
-    price = df["price"].values
-    qty = df["quantity"].values
-    side = df["side"].values
+    ts = df["ts"].to_numpy(dtype="datetime64[ns]").astype("int64")
+    price = df["price"].to_numpy(dtype="float64")
+    t_price = np.where((df["token_id"] == T).to_numpy(), price, 1.0 - price)
+    qty = df["quantity"].to_numpy(dtype="float64")
+    is_buy = (df["side"] == "BUY").to_numpy()
     is_token = (df["token_id"] == T).to_numpy()
-    tx_hash = df["tx_hash"].values
+    # "buy of T" = acquiring T: either BUY token T, or SELL token C (= buy T).
+    # These are the rows stored in the trees; they also want a *lower* T-price.
+    is_buy_of_T = np.where(is_token, is_buy, ~is_buy)
 
     n = len(df)
 
     # --- price compression ---
     unique_prices = np.sort(np.unique(t_price))
-    price_to_idx = {p: i+1 for i, p in enumerate(unique_prices)}  # 1-based
+    bit_n = len(unique_prices)
+    # 1-based compressed price index (exact match always exists in unique_prices)
+    pidx = np.searchsorted(unique_prices, t_price, side="left").astype(np.int64) + 1
 
-    pidx = np.array([price_to_idx[p] for p in t_price])
-
-    # "buy of T" = acquiring T: either BUY token T, or SELL token C (= buy T).
-    # These are the rows that want a *lower* T-price; the complement wants higher.
-    is_buy = (side == "BUY")
-    is_buy_of_T = np.where(is_token, is_buy, ~is_buy)
-
-    # --- per-factor thresholds (in compressed-price index space) ---
+    # --- per-extra-factor thresholds (in compressed-price index space) ---
     # For buy-of-T rows we count trades with T_price < T_thresh (strictly lower);
     # for sell-of-T we count T_price > T_thresh (strictly higher).
-    # factor 1.0 is handled with the exact pidx-based range sums below (no
-    # rounding) to preserve backward compatibility; extra factors use searchsorted
-    # against the floored-to-3dp adjusted threshold.
-    bit_n = len(unique_prices)
-    variant_hi = {}  # factor -> 1-based upper index for buy-of-T (range_sum(1, hi))
-    variant_lo = {}  # factor -> 1-based lower index for sell-of-T (range_sum(lo+1, n))
-    for f in extra_factors:
-        adjusted = np.where(is_buy, price * f, price / f)
-        adjusted = np.floor(adjusted * 1000.0) / 1000.0
-        t_thresh = np.where(is_token, adjusted, 1.0 - adjusted)
-        # number of unique prices strictly less than threshold
-        less = np.searchsorted(unique_prices, t_thresh, side="left")
-        # number of unique prices less-or-equal than threshold
-        leq = np.searchsorted(unique_prices, t_thresh, side="right")
-        suffix = variant_suffix(window_seconds, f)
-        variant_hi[suffix] = less      # range_sum(1, less)
-        variant_lo[suffix] = leq       # range_sum(leq + 1, bit_n)
+    # factor 1.0 is handled with the exact pidx-based range sums (no rounding)
+    # to preserve backward compatibility; extra factors use searchsorted against
+    # the floored-to-3dp adjusted threshold.  Thresholds do not depend on the
+    # window, so they are computed once per distinct factor.
+    hi_by_factor: dict[float, np.ndarray] = {}
+    lo_by_factor: dict[float, np.ndarray] = {}
+    for factors in windows.values():
+        for f in factors:
+            if abs(f - 1.0) <= 1e-12 or f in hi_by_factor:
+                continue
+            adjusted = np.where(is_buy, price * f, price / f)
+            adjusted = np.floor(adjusted * 1000.0) / 1000.0
+            t_thresh = np.where(is_token, adjusted, 1.0 - adjusted)
+            # number of unique prices strictly less than / less-or-equal than threshold
+            hi_by_factor[f] = np.searchsorted(unique_prices, t_thresh, side="left").astype(np.int64)
+            lo_by_factor[f] = np.searchsorted(unique_prices, t_thresh, side="right").astype(np.int64)
 
-    bit_qty = BIT(bit_n)
-    bit_vol = BIT(bit_n)
-    bit_count = BIT(bit_n)
-
-    # --- pointers ---
-    result_qty = np.zeros(n, dtype=np.float32)
-    result_vol = np.zeros(n, dtype=np.float32)
-    result_count = np.zeros(n, dtype=np.float32)
-    result_qty_var = {suffix: np.zeros(n, dtype=np.float32) for suffix in variant_hi}
-
-    add_ptr = 0
-    remove_ptr = 0
-
-    for i in range(n):
-        end = ts[i] + window
-
-        # add trades into window
-        while add_ptr < n and ts[add_ptr] <= end:
-            if (is_token[add_ptr] and side[add_ptr] == "BUY") or (not is_token[add_ptr] and side[add_ptr] == "SELL"):
-                bit_qty.update(pidx[add_ptr], qty[add_ptr])
-                bit_vol.update(pidx[add_ptr], qty[add_ptr] * t_price[add_ptr])
-                bit_count.update(pidx[add_ptr], 1)
-            add_ptr += 1
-
-        #remove trades with the same timestamp as the current trade, since they are not "future" trades
-        while remove_ptr < n and ts[remove_ptr] == ts[i]:
-            if (is_token[remove_ptr] and side[remove_ptr] == "BUY") or (not is_token[remove_ptr] and side[remove_ptr] == "SELL"):
-                bit_qty.update(pidx[remove_ptr], -qty[remove_ptr])
-                bit_vol.update(pidx[remove_ptr], -qty[remove_ptr] * t_price[remove_ptr])
-                bit_count.update(pidx[remove_ptr], -1)
-            remove_ptr += 1
-
-        # price in T (factor 1.0 — exact, unscaled)
-        pi = pidx[i]
-        buy_T = bool(is_buy_of_T[i])
-
-        if buy_T:
-            # better = lower price
-            result_qty[i] = bit_qty.range_sum(1, pi-1)
-            result_vol[i] = bit_vol.range_sum(1, pi-1)
-            result_count[i] = bit_count.range_sum(1, pi-1)
-            for suffix, arr in result_qty_var.items():
-                arr[i] = bit_qty.range_sum(1, int(variant_hi[suffix][i]))
+    for window_seconds, factors in windows.items():
+        extra_factors = [f for f in factors if abs(f - 1.0) > 1e-12]
+        if extra_factors:
+            variant_hi = np.stack([hi_by_factor[f] for f in extra_factors])
+            variant_lo = np.stack([lo_by_factor[f] for f in extra_factors])
         else:
-            # better = higher price
-            result_qty[i] = bit_qty.range_sum(pi+1, bit_qty.n)
-            result_vol[i] = bit_vol.range_sum(pi+1, bit_vol.n)
-            result_count[i] = bit_count.range_sum(pi+1, bit_count.n)
-            for suffix, arr in result_qty_var.items():
-                arr[i] = bit_qty.range_sum(int(variant_lo[suffix][i]) + 1, bit_qty.n)
+            variant_hi = np.zeros((0, n), dtype=np.int64)
+            variant_lo = np.zeros((0, n), dtype=np.int64)
 
-    df[qty_col] = result_qty
-    df[vol_col] = result_vol
-    df[count_col] = result_count
-    for suffix, arr in result_qty_var.items():
-        df[f"avail_copy_qty_{suffix}"] = arr
+        result_qty, result_vol, result_count, result_qty_var = _window_better_price_kernel(
+            ts, t_price, qty, pidx, is_buy_of_T, bit_n,
+            window_seconds * 1_000_000_000, variant_hi, variant_lo,
+        )
 
-    # remove helper column
-    del df['T_price']
+        df[avail_copy_qty_col(window_seconds, 1.0)] = result_qty
+        df[avail_copy_total_vol_col(window_seconds, 1.0)] = result_vol
+        df[avail_copy_count_col(window_seconds, 1.0)] = result_count
+        for k, f in enumerate(extra_factors):
+            df[avail_copy_qty_col(window_seconds, f)] = result_qty_var[k]
 
     return df
 
@@ -235,18 +255,30 @@ def enrich_shard(
     f,
     enriched_dir: Path,
     token_lookup_path: Path,
-    variants: list[tuple[int, float]] | None = None,
-    allowed_token_ids: set[str] | None = None,
-    allowed_condition_ids: set[str] | None = None,
+    variants: list[tuple[int, float]],
+    sample_rows: int | None = None,
 ) -> None:
     """Enrich one raw shard with copyable-quantity metrics for ``variants``.
 
-    ``variants`` is a list of ``(window_seconds, factor)`` tuples; defaults to
-    :data:`COPY_VARIANTS`.  Each variant emits suffixed ``avail_copy_qty_*``
-    columns plus a per-fill ``copyable_qty_*`` cap.
+    ``variants`` is a required list of ``(window_seconds, factor)`` tuples; each
+    variant emits suffixed ``avail_copy_qty_*`` columns plus a per-fill
+    ``copyable_qty_*`` cap.  The output additionally carries
+    ``last_condition_trade_ts`` — the condition's max trade timestamp, derived
+    from the shard itself (shards are partitioned by the first hex char of
+    ``condition_id``, so a condition's trades live in exactly one shard and the
+    per-shard max is the global max).
+
+    ``sample_rows`` limits how many raw rows are read from the head of the shard
+    (pipeline smoke-testing); ``None`` processes the whole shard.
+
+    Memory layout: the shard is read in batches, each batch inner-merged with
+    the token lookup's ``token_id`` column (dropping rows of markets missing
+    from the lookup) and dictionary-encoded, and the enriched output is written
+    incrementally per condition chunk.  Peak memory is roughly one filtered
+    shard (categorical) instead of three full object-dtype copies.
     """
-    variants = COPY_VARIANTS if variants is None else variants
-    if (enriched_dir / f"enriched_{f.name}").exists():
+    out_path = enriched_dir / f"enriched_{f.name}"
+    if out_path.exists():
         print(f"Enriched file for {f.name} already exists, skipping...")
         return
     enriched_dir.mkdir(parents=True, exist_ok=True)
@@ -256,36 +288,40 @@ def enrich_shard(
         "outcome", "token_winner", "wallet", "side", "price", "quantity",
         "usdc_amount", "position",
     ]
+    _CAT_COLS = ["condition_id", "token_id", "wallet", "side", "outcome"]
 
-    primary_qty_col = avail_copy_qty_col(variants[0][0], variants[0][1])
     parquet_file = pq.ParquetFile(f)
-    if primary_qty_col in parquet_file.schema_arrow.names:
-        return
-    print(f"{parquet_file.metadata.num_rows} trades in {f.name}")
-
-    n_after_condition = 0
-    n_after_token = 0
-    raw_parts = []
-    for batch in parquet_file.iter_batches(batch_size=1_000_000, columns=_KEEP_COLS):
-        bdf = batch.to_pandas()
-        if allowed_condition_ids is not None:
-            bdf = bdf[bdf["condition_id"].isin(allowed_condition_ids)]
-            n_after_condition += len(bdf)
-        if allowed_token_ids is not None:
-            bdf = bdf[bdf["token_id"].isin(allowed_token_ids)]
-            n_after_token += len(bdf)
-        if not bdf.empty:
-            raw_parts.append(bdf)
-    raw = pd.concat(raw_parts, ignore_index=True)
-    del raw_parts
-    if allowed_condition_ids is not None:
-        print(f"{n_after_condition} trades after condition filter for {f.name}")
-    if allowed_token_ids is not None:
-        print(f"{n_after_token} trades after token filter for {f.name}")
+    if sample_rows is None:
+        print(f"{parquet_file.metadata.num_rows} trades in {f.name}")
+    else:
+        print(f"sampling first {sample_rows:,} of {parquet_file.metadata.num_rows:,} trades in {f.name}")
 
     token_ids = pd.read_parquet(token_lookup_path, columns=["token_id"])
-    raw = raw.merge(token_ids, on="token_id", how="inner")
-    print(f"{len(raw)} trades after merging with token_df for {f.name}")
+
+    raw_parts = []
+    rows_read = 0
+    for batch in parquet_file.iter_batches(batch_size=1_000_000, columns=_KEEP_COLS):
+        bdf = batch.to_pandas()
+        if sample_rows is not None:
+            remaining = sample_rows - rows_read
+            if remaining <= 0:
+                break
+            if len(bdf) > remaining:
+                bdf = bdf.iloc[:remaining]
+        rows_read += len(bdf)
+        merged = bdf.merge(token_ids, on="token_id", how="inner")
+        del bdf
+        for col in _CAT_COLS:
+            merged[col] = merged[col].astype("category")
+        raw_parts.append(merged)
+        if sample_rows is not None and rows_read >= sample_rows:
+            break
+
+    raw = pd.concat(raw_parts, ignore_index=True)
+    del raw_parts
+    print(f"{len(raw):,} trades after merging with token_df for {f.name}")
+    if raw.empty:
+        return
 
     raw['ts'] = pd.to_datetime(raw['block_timestamp'], utc=True, unit='s')
 
@@ -294,25 +330,48 @@ def enrich_shard(
     for window_seconds, factor in variants:
         windows.setdefault(window_seconds, []).append(factor)
 
-    parts = []
-    for _, g in raw.groupby('condition_id', sort=False):
-        out = g
-        for window_seconds, factors in windows.items():
-            out = compute_future_better_price_qty(
-                out,
-                window=pd.Timedelta(seconds=window_seconds),
-                factors=tuple(factors),
+    writer = None
+    buffer: list[pd.DataFrame] = []
+    buffered_rows = 0
+    FLUSH_ROWS = 500_000
+    try:
+        for _, g in raw.groupby('condition_id', sort=False, observed=True):
+            out = _enrich_group(g, windows)
+            for window_seconds, factor in variants:
+                col = avail_copy_qty_col(window_seconds, factor)
+                out[copyable_qty_col(window_seconds, factor)] = out['quantity'].clip(
+                    lower=0, upper=out[col],
+                )
+            out["last_condition_trade_ts"] = pd.to_datetime(
+                out["block_timestamp"].max(), unit="s", utc=True
             )
-        parts.append(out)
-    del raw, g
-    enriched = pd.concat(parts, ignore_index=True)
-    del parts
+            buffer.append(out)
+            buffered_rows += len(out)
+            if buffered_rows >= FLUSH_ROWS:
+                chunk = pd.concat(buffer, ignore_index=True)
+                buffer, buffered_rows = [], 0
+                writer = _write_enriched_chunk(writer, out_path, chunk)
+        if buffer:
+            chunk = pd.concat(buffer, ignore_index=True)
+            writer = _write_enriched_chunk(writer, out_path, chunk)
+    finally:
+        if writer is not None:
+            writer.close()
 
-    for window_seconds, factor in variants:
-        col = avail_copy_qty_col(window_seconds, factor)
-        enriched[copyable_qty_col(window_seconds, factor)] = enriched['quantity'].clip(
-            lower=0, upper=enriched[col],
-        )
-    enriched.to_parquet(enriched_dir / f"enriched_{f.name}", index=False)
+    print(f"Enriched {f.name} with copyable_qty variants ({len(raw):,} rows)")
 
-    print(f"Enriched {f.name} with copyable_qty variants")
+
+def _write_enriched_chunk(writer, out_path: Path, chunk: pd.DataFrame):
+    """Append one buffered chunk of enriched rows to the output parquet.
+
+    Category columns are expanded back to plain strings first so every chunk
+    produces an identical arrow schema (required by ``ParquetWriter``).
+    """
+    for col in chunk.columns:
+        if isinstance(chunk[col].dtype, pd.CategoricalDtype):
+            chunk[col] = chunk[col].astype(str)
+    table = pa.Table.from_pandas(chunk, preserve_index=False)
+    if writer is None:
+        writer = pq.ParquetWriter(out_path, table.schema)
+    writer.write_table(table)
+    return writer
