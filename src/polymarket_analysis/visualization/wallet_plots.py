@@ -214,6 +214,9 @@ def plot_wallet_selection_pnl(
     pnl_cols: list[str] | None = None,
     plot_exposure: bool = True,
     exposure_fracs: tuple[float, ...] = (),
+    carve_fit_col: str | None = None,
+    plot_total: bool = True,
+    pnl_col_labels: dict[str, str] | None = None,
 ) -> go.Figure:
     """Single-panel aggregate PnL figure — one line per cohort.
 
@@ -232,6 +235,10 @@ def plot_wallet_selection_pnl(
     copyable PnL.  Fills on the displayed period (train, test, or both) with
     deployed capital ``>= T_{w,f}`` are kept.  The same thresholds apply to all
     ``pnl_cols`` and are never touched by test data.
+
+    Per cohort the traces are drawn in a fixed order: the cohort total, the
+    raw (unlimited) line per ``pnl_col``, the carved line per
+    (``pnl_col``, frac), and finally the exposure lines.
 
     Parameters
     ----------
@@ -265,6 +272,15 @@ def plot_wallet_selection_pnl(
         of the wallet's train copyable PnL by deployed capital,
         :func:`wallet_capture_thresholds`) and applied to the displayed period
         by ``deployed_capital >= T_{w,f}``.
+    carve_fit_col:
+        Column the capture thresholds are fitted on (default ``pnl_cols[0]``).
+        Use this to keep the fit on a fixed variant when ``pnl_cols`` only
+        contains a user-selected subset.
+    plot_total:
+        Whether to draw the cohort total (cumulative ``trade_pnl``) line.
+    pnl_col_labels:
+        Optional display labels per ``pnl_cols`` entry, used in trace names and
+        hover text (defaults to the column name).
 
     Returns
     -------
@@ -274,6 +290,7 @@ def plot_wallet_selection_pnl(
         raise ValueError(f"period must be 'train', 'test', or 'both'; got {period!r}")
     pnl_cols = list(pnl_cols) if pnl_cols else ["copyable_pnl"]
     exposure_cols = [f"{c}_exposure" for c in pnl_cols]
+    labels = pnl_col_labels or {}
 
     # ── bucket fills to bucket_freq per wallet ───────────────────────────────
     df = df_fills.copy()
@@ -288,13 +305,18 @@ def plot_wallet_selection_pnl(
     df["deployed_capital"] = df["position"] * df["price"]
     carve_thr: dict[float, pd.Series] = {}
     if exposure_fracs:
+        fit_col = carve_fit_col or pnl_cols[0]
+        if fit_col not in df.columns:
+            raise ValueError(
+                f"carve_fit_col {fit_col!r} is not a column of df_fills"
+            )
         fit = df[
             (df["last_condition_trade_ts"] <= split_ts)
             & (df["side"] == "BUY")
             & df["deployed_capital"].notna()
-        ][["wallet", *pnl_cols, "deployed_capital"]].copy()
+        ][["wallet", fit_col, "deployed_capital"]].copy()
         _capture = wallet_capture_thresholds(
-            fit, exposure_fracs, pnl_cols[0], "deployed_capital"
+            fit, exposure_fracs, fit_col, "deployed_capital"
         )
         carve_thr = {
             frac: carve_threshold_map(_capture, frac)
@@ -349,22 +371,24 @@ def plot_wallet_selection_pnl(
             continue
 
         # Total PnL (solid line)
-        fig.add_trace(
-            go.Scatter(
-                x=agg_df["bucket"],
-                y=agg_df["cum_pnl"],
-                mode="lines",
-                line={"color": color, "width": 2, "dash": "solid"},
-                name=f"{cohort_name} (total)",
-                hovertemplate=(
-                    f"{cohort_name} (total)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
-                    "cum PnL: %{y:.1f} USDC<extra></extra>"
-                ),
+        if plot_total:
+            fig.add_trace(
+                go.Scatter(
+                    x=agg_df["bucket"],
+                    y=agg_df["cum_pnl"],
+                    mode="lines",
+                    line={"color": color, "width": 2, "dash": "solid"},
+                    name=f"{cohort_name} (total)",
+                    hovertemplate=(
+                        f"{cohort_name} (total)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
+                        "cum PnL: %{y:.1f} USDC<extra></extra>"
+                    ),
+                )
             )
-        )
 
         # Unlimited-budget copyable PnL line per variant
         for i, c in enumerate(pnl_cols):
+            label = labels.get(c, c)
             bucket_c = agg_df[["bucket", c]].copy()
             bucket_c[f"cum_{c}"] = bucket_c[c].cumsum()
 
@@ -374,45 +398,26 @@ def plot_wallet_selection_pnl(
                     y=bucket_c[f"cum_{c}"],
                     mode="lines",
                     line={"color": color, "width": 2, "dash": "dot" if i == 0 else "dash"},
-                    name=f"{cohort_name} ({c}, raw)",
+                    name=f"{cohort_name} ({label}, raw)",
                     hovertemplate=(
-                        f"{cohort_name} ({c})<br>%{{x|%Y-%m-%d %H:%M}}<br>"
+                        f"{cohort_name} ({label})<br>%{{x|%Y-%m-%d %H:%M}}<br>"
                         "cum Copyable PnL (unlimited): %{y:.1f} USDC<extra></extra>"
                     ),
                 )
             )
 
-            if plot_exposure:
-                exp = copyable_exposure_series(
-                    cohort_sel, f"{c}_exposure", bucket_freq=bucket_freq
-                )
-                if not exp.empty:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=exp["dt"],
-                            y=exp["exposure"],
-                            mode="lines",
-                            line={"color": color, "width": 1.5, "dash": "dot"},
-                            opacity=0.75,
-                            yaxis="y2",
-                            name=f"{cohort_name} ({c}, exposure)",
-                            hovertemplate=(
-                                f"{cohort_name} ({c}, exposure)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
-                                "exposure: %{y:.0f} USDC<extra></extra>"
-                            ),
-                        )
-                    )
-
-            # Carved copyable-PnL lines: keep each wallet's fills whose deployed
-            # capital is >= T_{w,f}, trained on the train portion. Thresholds are
-            # shared across every pnl_col variant (subset is the same; only the
-            # PnL column differs).
-            valid = cohort_sel[cohort_sel["deployed_capital"].notna()]
-            carved_subsets = {}
-            for frac, thr in carve_thr.items():
-                kept = valid[valid["deployed_capital"] >= valid["wallet"].map(thr).fillna(0.0)]
-                if not kept.empty:
-                    carved_subsets[frac] = kept
+        # Carved copyable-PnL lines: keep each wallet's fills whose deployed
+        # capital is >= T_{w,f}, trained on the train portion. Thresholds are
+        # shared across every pnl_col variant (subset is the same; only the
+        # PnL column differs).
+        valid = cohort_sel[cohort_sel["deployed_capital"].notna()]
+        carved_subsets = {}
+        for frac, thr in carve_thr.items():
+            kept = valid[valid["deployed_capital"] >= valid["wallet"].map(thr).fillna(0.0)]
+            if not kept.empty:
+                carved_subsets[frac] = kept
+        for c in pnl_cols:
+            label = labels.get(c, c)
             for frac, carved in carved_subsets.items():
                 cagg = (
                     carved.groupby("bucket", sort=True)[c]
@@ -427,13 +432,37 @@ def plot_wallet_selection_pnl(
                         mode="lines",
                         line={"color": color, "width": 1, "dash": "longdash"},
                         opacity=0.6,
-                        name=f"{cohort_name} ({c}, frac {frac:g})",
+                        name=f"{cohort_name} ({label}, frac {frac:g})",
                         hovertemplate=(
-                            f"{cohort_name} ({c}, frac {frac:g})<br>%{{x|%Y-%m-%d %H:%M}}<br>"
+                            f"{cohort_name} ({label}, frac {frac:g})<br>%{{x|%Y-%m-%d %H:%M}}<br>"
                             "cum Copyable PnL (carved): %{y:.1f} USDC<extra></extra>"
                         ),
                     )
                 )
+
+        # Exposure lines last, on the secondary y-axis
+        if plot_exposure:
+            for c in pnl_cols:
+                label = labels.get(c, c)
+                exp = copyable_exposure_series(
+                    cohort_sel, f"{c}_exposure", bucket_freq=bucket_freq
+                )
+                if not exp.empty:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=exp["dt"],
+                            y=exp["exposure"],
+                            mode="lines",
+                            line={"color": color, "width": 1.5, "dash": "dot"},
+                            opacity=0.75,
+                            yaxis="y2",
+                            name=f"{cohort_name} ({label}, exposure)",
+                            hovertemplate=(
+                                f"{cohort_name} ({label}, exposure)<br>%{{x|%Y-%m-%d %H:%M}}<br>"
+                                "exposure: %{y:.0f} USDC<extra></extra>"
+                            ),
+                        )
+                    )
 
     fig.update_layout(
         template="plotly_white",

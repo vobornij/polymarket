@@ -198,21 +198,21 @@ def _sports_strategy_masks(
     base_mask = (
         (candidates["buy_roi"] >= 0.04)
         & (candidates["buy_pnl"] >= 1_000)
-        & (candidates['num_markets'] >= 20)
+        & (candidates["total_pnl"] >= 4_000)
+        & (candidates['num_markets'] >= 30)
         & (candidates['num_buckets'] >= 50)
-        # & (candidates["market_pnl_hhi"].fillna(0.50) < 0.2)
-        # & (candidates["estimated_buy_sharpe"] >= 3)
-        & (candidates["max_drawdown_to_pnl"] <= 0.3)
+        & (candidates["market_pnl_hhi"].fillna(0.50) < 0.2)
+        & (candidates["estimated_buy_sharpe"] >= 3)
+        & (candidates["max_drawdown_to_pnl"] <= 0.2)
     )
     # other filters — exposure-carved stats
     carved = candidates_carved.set_index("wallet")
     carved_mask = (
-        (carved["buy_roi"] >= 0.07)
+        (carved["buy_roi"] >= 0.05)
         # & (carved["num_buckets"] >= 10)
-        & (carved["max_drawdown_to_pnl"] <= 0.3)
+        # & (carved["max_drawdown_to_pnl"] <= 0.2)
         # & (carved["market_pnl_hhi"].fillna(0.50) < 0.2)
         & (carved["total_notional"] >= 5_000)
-        # & (carved["estimated_buy_sharpe"] >= 3)
         & (carved["buy_copyable_pnl"] > 500)
     )
     base_mask &= candidates["wallet"].isin(carved_mask.index[carved_mask])
@@ -221,12 +221,12 @@ def _sports_strategy_masks(
         return base_mask, pd.Series(False, index=eligible.index)
     copyable_mask = (
         (eligible["wallet"].map(carved["buy_copyable_pnl"]) > 500)
-        & (eligible["wallet"].map(carved["buy_copyable_roi"]) >= 0.05)
+        & (eligible["wallet"].map(carved["buy_copyable_roi"]) >= 0.07)
         # & (eligible["wallet"].map(carved["max_drawdown_to_pnl"]) <= 0.2)
-        # & (eligible["wallet"].map(carved["estimated_copyable_buy_sharpe"]) >= 3)
-        & ( (eligible["wallet"].map(carved["max_copyable_drawdown_to_copyable_pnl"]) <= 0.4)
-        # & (eligible["wallet"].map(carved["copyable_pnl_similarity"]) >= 0.2)
-    ) | (eligible['wallet'] == '0xc3973025163de81e367ad29c21e296e51684bb3b'))
+        # & (eligible["wallet"].map(carved["estimated_copyable_buy_sharpe"]) >= 4)
+        & (eligible["wallet"].map(carved["max_copyable_drawdown_to_copyable_pnl"]) <= 0.3)
+        # & (eligible["wallet"].map(carved["copyable_pnl_similarity"]) >= 0.6)
+    ) 
     return base_mask, copyable_mask
 
 

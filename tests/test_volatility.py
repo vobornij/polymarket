@@ -199,6 +199,21 @@ def test_similarity_20m_bucket_clip():
     assert buckets["copyable_pnl_20m_100"].iloc[0] == pytest.approx(1.0)
 
 
+def test_missing_20m_variant_columns_yields_nan_similarity():
+    pnl = np.linspace(-2.0, 6.0, 20)
+    df = _fills(pnl, 0.3 * pnl).drop(
+        columns=["copyable_qty_20m_100", "avail_copy_qty_20m_100"]
+    )
+    res, buckets = compute_wallet_metrics(df)
+    row = res.loc[res["wallet"] == "0xa"].iloc[0]
+    assert row["copyable_pnl_similarity"] == pytest.approx(1.0, abs=1e-9)
+    for col in (SIM_20M, SIM_20M_PROFIT, SIM_20M_LOSS):
+        assert col in res.columns
+        assert np.isnan(row[col])
+    assert "copyable_pnl_20m_100" not in buckets.columns
+    assert "copyable_qty_20m" not in buckets.columns
+
+
 def _market_fills(market_pnls: dict[str, list[float]], wallet: str = "0xa") -> pd.DataFrame:
     rows = []
     t0 = pd.Timestamp("2026-01-01", tz="UTC")

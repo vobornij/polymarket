@@ -147,8 +147,10 @@ def _wallet_metrics_from_buckets(buckets: pd.DataFrame) -> pd.DataFrame:
     :func:`compute_wallet_metrics` (one row per (wallet, dt_floored,
     condition_id, side), wallets contiguous in appearance order) and must
     contain: ``pnl``, ``notional``, ``condition_id``, ``copyable_pnl``,
-    ``copyable_pnl_20m_100``, ``quantity``, ``copyable_qty``,
-    ``copyable_qty_20m``, ``side``, ``dt_floored``, ``trade_count``.
+    ``quantity``, ``copyable_qty``, ``side``, ``dt_floored``, ``trade_count``.
+    ``copyable_pnl_20m_100`` / ``copyable_qty_20m`` are optional (present
+    only when the 20m variant was exported by stage0); when missing, the
+    ``*_20m_100`` similarity metrics come back as NaN.
 
     All metrics are computed in a single groupby pass (no per-wallet Python
     loop).  Row order within a wallet is preserved exactly: the drawdown and
@@ -254,11 +256,17 @@ def _wallet_metrics_from_buckets(buckets: pd.DataFrame) -> pd.DataFrame:
     res["estimated_buy_sharpe"] = _wallet_daily_sharpe(buy)
     res["estimated_copyable_buy_sharpe"] = _wallet_daily_sharpe(buy, pnl_col="copyable_pnl")
     for suffix, col in SIMILARITY_COPYABLE_COLS.items():
-        res[f"copyable_pnl_similarity{suffix}"] = _copyable_pnl_similarity(df, copyable_col=col)
-        res[f"copyable_pnl_similarity_profit{suffix}"] = _copyable_pnl_similarity(
-            df, subset="profit", copyable_col=col)
-        res[f"copyable_pnl_similarity_loss{suffix}"] = _copyable_pnl_similarity(
-            df, subset="loss", copyable_col=col)
+        sim_cols = {
+            f"copyable_pnl_similarity{suffix}": dict(copyable_col=col),
+            f"copyable_pnl_similarity_profit{suffix}": dict(subset="profit", copyable_col=col),
+            f"copyable_pnl_similarity_loss{suffix}": dict(subset="loss", copyable_col=col),
+        }
+        if col in df.columns:
+            for name, kwargs in sim_cols.items():
+                res[name] = _copyable_pnl_similarity(df, **kwargs)
+        else:
+            for name in sim_cols:
+                res[name] = float("nan")
 
     nz2 = abs(res["total_pnl"]) <= 0
     for c in ["top5_pnl_pct", "top10_pnl_pct", "worst5_pnl_pct", "top_market_pnl_pct",
@@ -296,8 +304,11 @@ def compute_wallet_metrics(
     df_slice:
         Fill-level rows.  Must contain: ``wallet``, ``dt``, ``condition_id``,
         ``side``, ``notional``, ``pnl``, ``quantity``, ``copyable_pnl``,
-        ``copyable_qty_5m_100``, ``avail_copy_total_vol_5m_100``,
-        ``copyable_qty_20m_100``, ``avail_copy_qty_20m_100``.
+        ``copyable_qty_5m_100``, ``avail_copy_total_vol_5m_100``.  The
+        20-minute variant columns (``copyable_qty_20m_100`` /
+        ``avail_copy_qty_20m_100``) are optional: stage0 only exports them
+        when the 20m variant is enabled in its ``VARIANTS`` config.  When
+        they are absent, the ``*_20m_100`` similarity metrics are NaN.
     bucket_freq:
         Pandas offset alias for the time bucket (default ``'5m'``).
 
@@ -321,7 +332,8 @@ def compute_wallet_metrics(
         with negative wallet PnL).  Each of the three similarity metrics is
         also emitted with a ``_20m_100`` suffix, computed from the 20-minute
         copy variant (``copyable_qty_20m_100``) instead of the base
-        ``copyable_pnl``
+        ``copyable_pnl`` — all-NaN when the 20m variant columns are absent
+        from the input
     buckets : pd.DataFrame
         The intermediate bucket-level aggregation.
     """
@@ -331,10 +343,26 @@ def compute_wallet_metrics(
     tmp = df_slice.copy()
     tmp["dt_floored"] = tmp["dt"].dt.floor(bucket_freq)
 
-    tmp["copyable_pnl_20m_100"] = tmp["pnl"] * (
-        tmp["copyable_qty_20m_100"].clip(lower=0, upper=tmp["quantity"])
-        / tmp["quantity"]
+    has_20m = "copyable_qty_20m_100" in tmp.columns
+    if has_20m:
+        tmp["copyable_pnl_20m_100"] = tmp["pnl"] * (
+            tmp["copyable_qty_20m_100"].clip(lower=0, upper=tmp["quantity"])
+            / tmp["quantity"]
+        )
+
+    agg = dict(
+        notional=("notional", "sum"),
+        pnl=("pnl", "sum"),
+        copyable_pnl=("copyable_pnl", "sum"),
+        quantity=("quantity", "sum"),
+        copyable_qty_sum=("copyable_qty_5m_100", "sum"),
+        trade_count=("pnl", "size"),
+        avail_copy_total_vol=("avail_copy_total_vol_5m_100", "max"),
     )
+    if has_20m:
+        agg["copyable_pnl_20m_100"] = ("copyable_pnl_20m_100", "sum")
+        agg["copyable_qty_20m_sum"] = ("copyable_qty_20m_100", "sum")
+        agg["avail_copy_qty_20m"] = ("avail_copy_qty_20m_100", "max")
 
     buckets = (
         tmp.groupby(
@@ -342,18 +370,7 @@ def compute_wallet_metrics(
             sort=False,
             observed=True,
         )
-        .agg(
-            notional=("notional", "sum"),
-            pnl=("pnl", "sum"),
-            copyable_pnl=("copyable_pnl", "sum"),
-            copyable_pnl_20m_100=("copyable_pnl_20m_100", "sum"),
-            quantity=("quantity", "sum"),
-            copyable_qty_sum=("copyable_qty_5m_100", "sum"),
-            copyable_qty_20m_sum=("copyable_qty_20m_100", "sum"),
-            trade_count=("pnl", "size"),
-            avail_copy_total_vol=("avail_copy_total_vol_5m_100", "max"),
-            avail_copy_qty_20m=("avail_copy_qty_20m_100", "max"),
-        )
+        .agg(**agg)
         .reset_index()
     )
 
@@ -371,18 +388,20 @@ def compute_wallet_metrics(
         / buckets.loc[mask, "copyable_qty_sum"]
     )
 
-    buckets["copyable_qty_20m"] = np.minimum(
-        buckets["copyable_qty_20m_sum"],
-        buckets["avail_copy_qty_20m"],
-    )
+    if has_20m:
+        buckets["copyable_qty_20m"] = np.minimum(
+            buckets["copyable_qty_20m_sum"],
+            buckets["avail_copy_qty_20m"],
+        )
 
-    mask_20m = buckets["copyable_qty_20m_sum"] > 0
-    buckets.loc[mask_20m, "copyable_pnl_20m_100"] *= (
-        buckets.loc[mask_20m, "copyable_qty_20m"]
-        / buckets.loc[mask_20m, "copyable_qty_20m_sum"]
-    )
+        mask_20m = buckets["copyable_qty_20m_sum"] > 0
+        buckets.loc[mask_20m, "copyable_pnl_20m_100"] *= (
+            buckets.loc[mask_20m, "copyable_qty_20m"]
+            / buckets.loc[mask_20m, "copyable_qty_20m_sum"]
+        )
 
-    buckets = buckets.drop(columns=["copyable_qty_sum", "copyable_qty_20m_sum"])
+    drop_cols = ["copyable_qty_sum"] + (["copyable_qty_20m_sum"] if has_20m else [])
+    buckets = buckets.drop(columns=drop_cols)
 
     buckets = buckets[buckets["notional"] > 0].copy()
 
