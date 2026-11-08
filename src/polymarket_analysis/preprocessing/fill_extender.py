@@ -27,6 +27,83 @@ def _bit_prefix(tree, i):
     return s
 
 
+# --- Backward flow kernel (running accumulators, no trees needed) ---
+@njit(cache=True)
+def _backward_flow_kernel(
+    ts, usdc, is_buy_of_T, is_token, price, window_ns,
+):
+    """Backward-looking flow features per row (sliding window, O(n)).
+
+    For each row ``i`` the window is ``[ts[i] - window_ns, ts[i])`` — strictly
+    before the row (same-timestamp trades are excluded).
+
+    ``is_buy_of_T`` marks rows acquiring the reference token T (BUY T or SELL C).
+    Flow toward T = Σ(usdc of is_buy_of_T rows) − Σ(usdc of the rest).
+
+    Also tracks the running last price for each token (NOT windowed — the most
+    recent own-token trade ever before the row) for ``price_chg_last_own``.
+
+    Returns
+    -------
+    res_flowT : float64[n] — net USD flow toward reference token T in the window.
+    res_usdc_all : float64[n] — total USD traded in the window.
+    res_pchg_own : float64[n] — row price minus last own-token trade price
+        (NaN when no prior own-token trade exists).
+    """
+    n = ts.shape[0]
+    res_flowT = np.zeros(n, dtype=np.float64)
+    res_usdc_all = np.zeros(n, dtype=np.float64)
+    res_pchg_own = np.full(n, np.nan, dtype=np.float64)
+
+    # Windowed running accumulators (signed by is_buy_of_T)
+    acc_pos = 0.0  # Σ usdc of is_buy_of_T rows (positive T-flow)
+    acc_neg = 0.0  # Σ usdc of ~is_buy_of_T rows (negative T-flow)
+
+    # Running (non-windowed) last prices per token
+    last_T_price = np.nan
+    last_C_price = np.nan
+
+    add_ptr = 0   # next row to add to the window
+    evict_ptr = 0  # next row to evict from the window
+
+    for i in range(n):
+        # 1. Add all rows with ts < ts[i] (strictly before row i)
+        while add_ptr < n and ts[add_ptr] < ts[i]:
+            if is_buy_of_T[add_ptr]:
+                acc_pos += usdc[add_ptr]
+            else:
+                acc_neg += usdc[add_ptr]
+            # Update running last prices (not windowed)
+            if is_token[add_ptr]:
+                last_T_price = price[add_ptr]
+            else:
+                last_C_price = price[add_ptr]
+            add_ptr += 1
+
+        # 2. price_chg_last_own (running, not windowed)
+        if is_token[i]:
+            if not np.isnan(last_T_price):
+                res_pchg_own[i] = price[i] - last_T_price
+        else:
+            if not np.isnan(last_C_price):
+                res_pchg_own[i] = price[i] - last_C_price
+
+        # 3. Evict rows with ts < ts[i] - window_ns
+        cutoff = ts[i] - window_ns
+        while evict_ptr < add_ptr and ts[evict_ptr] < cutoff:
+            if is_buy_of_T[evict_ptr]:
+                acc_pos -= usdc[evict_ptr]
+            else:
+                acc_neg -= usdc[evict_ptr]
+            evict_ptr += 1
+
+        # 4. Flow features from windowed accumulators
+        res_flowT[i] = acc_pos - acc_neg
+        res_usdc_all[i] = acc_pos + acc_neg
+
+    return res_flowT, res_usdc_all, res_pchg_own
+
+
 @njit(cache=True)
 def _window_better_price_kernel(
     ts, t_price, qty, pidx, is_buy_of_T, bit_n, window_ns, variant_hi, variant_lo,
@@ -107,9 +184,12 @@ def _factor_code(f: float) -> str:
 # ``copyable_qty_{window_min}m_{factor_code}``.
 COPY_VARIANTS: list[tuple[int, float]] = [
     (5 * 60, 1.0),    # 5 min  @ price × 1.00  (primary variant)
-    (5 * 60, 0.95),   # 5 min  @ price × 0.95
-    (20 * 60, 1.0),   # 20 min @ price × 1.00
+    # (5 * 60, 0.95),   # 5 min  @ price × 0.95
+    # (20 * 60, 1.0),   # 20 min @ price × 1.00
 ]
+
+# ── backward flow window (seconds) ────────────────────────────────────────────
+FLOW_WINDOW_S = 60  # prior-60s net trade flow against the bought token
 
 
 def variant_suffix(window_seconds: int, factor: float) -> str:
@@ -185,6 +265,9 @@ def _enrich_group(df: pd.DataFrame, windows: dict[int, list[float]]) -> pd.DataF
             for f in factors:
                 if abs(f - 1.0) > 1e-12:
                     df[avail_copy_qty_col(window_seconds, f)] = np.zeros(0, dtype=np.float32)
+        df["flow_own_usdc_60"] = np.zeros(0, dtype=np.float64)
+        df["usdc_all_60"] = np.zeros(0, dtype=np.float64)
+        df["price_chg_last_own"] = np.zeros(0, dtype=np.float64)
         return df
 
     # tree will store only "BUY T" trades. Full df contains both sides
@@ -247,6 +330,16 @@ def _enrich_group(df: pd.DataFrame, windows: dict[int, list[float]]) -> pd.DataF
         df[avail_copy_count_col(window_seconds, 1.0)] = result_count
         for k, f in enumerate(extra_factors):
             df[avail_copy_qty_col(window_seconds, f)] = result_qty_var[k]
+
+    # --- backward flow features (prior-60s window, token-relative) ---
+    usdc = df["usdc_amount"].to_numpy(dtype=np.float64)
+    res_flowT, res_usdc_all, res_pchg = _backward_flow_kernel(
+        ts, usdc, is_buy_of_T, is_token, price,
+        FLOW_WINDOW_S * 1_000_000_000,
+    )
+    df["flow_own_usdc_60"] = np.where(is_token, res_flowT, -res_flowT)
+    df["usdc_all_60"] = res_usdc_all
+    df["price_chg_last_own"] = res_pchg
 
     return df
 

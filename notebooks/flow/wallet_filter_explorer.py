@@ -15,12 +15,17 @@ Features
 * Membership checkboxes (strategy-eligible / strategy-selected / test-active).
 * Scatter plot with selectable X / Y (any column, log toggles) and color modes;
   click a wallet to pick it and show its detail, lasso to pick groups.
-* PnL panels (train and test in two separate graphs) overlaying the **full**
-  (pre-carve) and **carved** (``is_carved``) streams: wallet PnL, capped
-  (``pnl_limited`` / ``copyable_pnl_limited``), copyable PnL, exposure lines on
-  a secondary axis, and extra bankroll-discipline carved fracs (train-fit
-  ``wallet_capture_thresholds``). Shows either the clicked wallet or the
-  aggregate of all picked wallets; variants/exposures/carve are toggles.
+* PnL panels (train and test in two separate graphs) for the clicked wallet or
+  the aggregate of all picked wallets. Instead of precomputed PnL variants,
+  the panels expose **checkable fill filters** (price band, size share, flow
+  share, carved-only, copyable-only). Every checked filter is combined into a
+  single per-fill mask; the wallet / copyable cumulative PnL is recomputed from
+  the masked fills on every change. Exposure lines and bankroll-discipline
+  carved fracs remain available as overlays.
+* Flow-filter controls (short-horizon contrarian overlay): tuneable signed flow
+  share (``flow_usdc_share_60 <= share_thr``) and an optional uptick
+  requirement. When the fills carry the raw flow columns, the flow filter is
+  offered as one of the checkable fill filters.
 * Sortable table of the wallets passing the current filters, with
   "pick passing" (add every passing wallet) and shift+click range selection.
 * "Save selection" POSTs the current filter config + picked wallets back to
@@ -45,9 +50,12 @@ Notebook usage (dedicated cell in ``notebooks/flow/stage1_wallet_strategy_select
         selected_wallets=copyable_wallets,
         fills=df_full_buy_full,  # pre-carve BUY stream with `is_carved`
         split_date=TRAIN_END,
-        exposure_fracs=tuple(
-            f for f in EXPOSURE_FRACS if f != EXPOSURE_FILTER_FRAC
-        ),
+        exposure_fracs=EXPOSURE_FRACS,
+        flow_price_lo=FLOW_PRICE_LO,
+        flow_price_hi=FLOW_PRICE_HI,
+        flow_share_thr=FLOW_SHARE_THR,
+        flow_strict=FLOW_STRICT,
+        flow_carve_frac=FLOW_CARVE_FRAC,
         out_dir=WORKSPACE_DIR,
     )
 
@@ -246,16 +254,24 @@ def build_payload(
     eligible_wallets: set[str] | None = None,
     selected_wallets: set[str] | None = None,
     fills: pd.DataFrame | None = None,
+    exposure_fracs: Iterable[float] = (),
+    flow_price_lo: float = 0.20,
+    flow_price_hi: float = 0.50,
+    flow_share_thr: float = -0.10,
+    flow_strict: bool = False,
+    flow_carve_frac: float | None = None,
 ) -> dict[str, Any]:
     """Build the JSON payload served to the page at ``GET /data``.
 
     ``fills`` (the carved stream with ``is_train``) enables the test-active
-    flag and the train/test PnL panels.
+    flag, the train/test PnL panels, and (when the raw flow columns are
+    present) the flow-filter controls.
     """
     if variant not in VARIANT_FILTERS:
         raise ValueError(
             f"Unknown variant {variant!r}; expected one of {sorted(VARIANT_FILTERS)}"
         )
+    exposure_fracs = tuple(float(f) for f in exposure_fracs)
 
     test_active_wallets: set[str] | None = None
     if fills is not None:
@@ -306,21 +322,70 @@ def build_payload(
         ),
     }
 
-    variants = _available_pnl_variants(fills) if fills is not None else []
+    flow_available = fills is not None and _flow_available(fills)
+    carve_fracs = sorted({float(f) for f in exposure_fracs})
+    if flow_carve_frac is not None and float(flow_carve_frac) not in carve_fracs:
+        carve_fracs = sorted({*carve_fracs, float(flow_carve_frac)})
+
+    pnl_filters: list[dict[str, Any]] = []
+    filter_defaults: dict[str, Any] = {}
+    if fills is not None:
+        if "price" in fills.columns:
+            pnl_filters.append({"key": "price", "label": "price band", "default": False})
+            price = pd.to_numeric(fills["price"], errors="coerce").dropna()
+            filter_defaults["price_lo"] = float(price.min()) if len(price) else 0.0
+            filter_defaults["price_hi"] = float(price.max()) if len(price) else 1.0
+        if "size_share" in fills.columns:
+            pnl_filters.append(
+                {"key": "size_share", "label": "size share", "default": False}
+            )
+            is_train = (
+                fills["is_train"].astype(bool)
+                if "is_train" in fills.columns
+                else pd.Series(True, index=fills.index)
+            )
+            size_share = pd.to_numeric(
+                fills.loc[is_train, "size_share"], errors="coerce"
+            ).dropna()
+            if size_share.empty:
+                size_share = pd.to_numeric(
+                    fills["size_share"], errors="coerce"
+                ).dropna()
+            filter_defaults["size_share_max"] = (
+                float(size_share.quantile(0.5)) if len(size_share) else None
+            )
+        if flow_available:
+            pnl_filters.append(
+                {"key": "flow", "label": "flow share", "default": False}
+            )
+            filter_defaults["flow_share_max"] = float(flow_share_thr)
+            filter_defaults["flow_strict"] = bool(flow_strict)
+        if "copyable_qty_5m_100" in fills.columns:
+            pnl_filters.append(
+                {"key": "copyable", "label": "copyable qty > 0", "default": False}
+            )
+        if "is_carved" in fills.columns:
+            pnl_filters.append(
+                {"key": "carved", "label": "carved fills only", "default": False}
+            )
+
     return {
         "variant": variant,
         "flags": flags,
         "columns": columns,
         "presets": presets,
         "presetsDropped": presets_dropped,
-        "pnlVariants": [
-            {
-                "key": c,
-                "label": _variant_label(c),
-                "default": _split_variant(c)[0] in ("pnl", "copyable_pnl"),
-            }
-            for c in variants
-        ],
+        "pnlFilters": pnl_filters,
+        "filterDefaults": filter_defaults,
+        "flowAvailable": flow_available,
+        "flowDefaults": {
+            "price_lo": float(flow_price_lo),
+            "price_hi": float(flow_price_hi),
+            "share_thr": float(flow_share_thr),
+            "strict": bool(flow_strict),
+            "carve_frac": None if flow_carve_frac is None else float(flow_carve_frac),
+        },
+        "flowCarveFracs": carve_fracs,
         "defaultAxes": default_axes,
         # to_json maps NaN -> null; booleans stay booleans.
         "wallets": json.loads(merged.to_json(orient="records")),
@@ -344,13 +409,26 @@ _PNL_BASE_COLUMNS = (
     "is_train",
 )
 _PNL_BASE_VARIANTS = ("pnl", "pnl_limited", "copyable_pnl", "copyable_pnl_limited")
+_FLOW_COLUMNS = ("flow_own_usdc_60", "usdc_all_60", "price_chg_last_own")
+_PNL_FLOW_VARIANTS = ("copyable_pnl_flow", "copyable_pnl_limited_flow")
+_FLOW_BASE_SOURCES = {
+    "copyable_pnl_flow": "copyable_pnl",
+    "copyable_pnl_limited_flow": "copyable_pnl_limited",
+}
 _PNL_STREAMS = ("full", "carved")
 _PNL_VARIANT_LABELS = {
     "pnl": "wallet pnl",
     "pnl_limited": "wallet pnl (capped)",
     "copyable_pnl": "copyable pnl",
     "copyable_pnl_limited": "copyable pnl (capped)",
+    "copyable_pnl_flow": "copyable pnl (flow)",
+    "copyable_pnl_limited_flow": "copyable pnl (flow, capped)",
 }
+
+
+def _flow_available(fills: pd.DataFrame) -> bool:
+    """True when ``fills`` carries the raw columns needed for flow masks."""
+    return all(c in fills.columns for c in (*_FLOW_COLUMNS, "price", "side"))
 
 
 def _split_variant(key: str) -> tuple[str, str | None]:
@@ -369,7 +447,7 @@ def _variant_label(key: str) -> str:
 
 def _copyable_qty_col(fills: pd.DataFrame, pnl_col: str) -> str | None:
     """qty column whose price × qty is the copy exposure of ``pnl_col``."""
-    if pnl_col == "copyable_pnl" or pnl_col == "copyable_pnl_limited":
+    if pnl_col in ("copyable_pnl", "copyable_pnl_limited", *_PNL_FLOW_VARIANTS):
         return "copyable_qty_5m_100"
     if pnl_col.startswith("copyable_pnl_"):
         return f"copyable_qty_{pnl_col[len('copyable_pnl_'):]}"
@@ -381,6 +459,12 @@ def _variant_available(fills: pd.DataFrame, pnl_col: str) -> bool:
         return "notional" in fills.columns
     if pnl_col == "pnl_limited":
         return {"notional", "deployed_capital_frac"} <= set(fills.columns)
+    if pnl_col in _PNL_FLOW_VARIANTS:
+        if not _flow_available(fills) or "copyable_qty_5m_100" not in fills.columns:
+            return False
+        if pnl_col == "copyable_pnl_limited_flow":
+            return "deployed_capital_frac" in fills.columns
+        return "copyable_pnl" in fills.columns
     qty_col = _copyable_qty_col(fills, pnl_col)
     if qty_col is None or qty_col not in fills.columns or "price" not in fills.columns:
         return False
@@ -390,17 +474,20 @@ def _variant_available(fills: pd.DataFrame, pnl_col: str) -> bool:
 
 
 def _available_pnl_variants(fills: pd.DataFrame) -> list[str]:
-    """Base PnL variants × streams, where exposure can be derived.
+    """Pnl variants × streams, where PnL / exposure can be derived.
 
     ``fills`` is the full (pre-carve) BUY stream; when it carries an
     ``is_carved`` flag every variant is offered for both the full and the
-    exposure-carved stream. Extra ``copyable_pnl_*`` columns are not offered.
+    exposure-carved stream. Flow-limited copyable variants are added when the
+    raw flow columns are present. Extra ``copyable_pnl_*`` columns are not
+    offered.
     """
     bases = [
         c
         for c in _PNL_BASE_VARIANTS
         if c in fills.columns and _variant_available(fills, c)
     ]
+    bases += [c for c in _PNL_FLOW_VARIANTS if _variant_available(fills, c)]
     streams = _PNL_STREAMS if "is_carved" in fills.columns else _PNL_STREAMS[:1]
     return [f"{base}__{stream}" for base in bases for stream in streams]
 
@@ -418,17 +505,25 @@ def _prepare_pnl_fills(fills: pd.DataFrame, variants: list[str]) -> pd.DataFrame
         base, stream = _split_variant(key)
         if stream is None:
             raise ValueError(f"PnL variant {key!r} needs a __full/__carved suffix")
-        if base not in _PNL_BASE_VARIANTS:
+        if base not in (*_PNL_BASE_VARIANTS, *_PNL_FLOW_VARIANTS):
             raise ValueError(f"unsupported PnL variant {key!r}")
-        if base not in bases:
-            bases.append(base)
+        source = _FLOW_BASE_SOURCES.get(base, base)
+        if source not in bases:
+            bases.append(source)
         streams.add(stream)
     if "carved" in streams and "is_carved" not in fills.columns:
         raise ValueError("carved PnL variants require an 'is_carved' column")
+    if any(
+        _split_variant(key)[0] in _PNL_FLOW_VARIANTS for key in variants
+    ) and not _flow_available(fills):
+        raise ValueError("flow PnL variants require the raw flow columns")
 
     need = list(_PNL_BASE_COLUMNS)
-    if "carved" in streams:
+    if "is_carved" in fills.columns:
         need.append("is_carved")
+    if "size_share" in fills.columns:
+        need.append("size_share")
+    need.extend(c for c in _FLOW_COLUMNS if c in fills.columns)
     for base in bases:
         if base not in need:
             need.append(base)
@@ -494,6 +589,181 @@ def _resolve_split_date(fills: pd.DataFrame, split_date: Any) -> pd.Timestamp:
     return pd.Timestamp.now(tz="UTC")
 
 
+def _normalize_flow(flow: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Validate / normalize the flow-filter config sent by the page."""
+    if flow is None:
+        return None
+    if not isinstance(flow, dict):
+        raise ValueError("flow must be an object")
+    try:
+        price_lo = float(flow.get("price_lo", 0.0))
+        price_hi = float(flow.get("price_hi", 1.0))
+        share_thr = float(flow.get("share_thr", 0.0))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"flow thresholds must be numbers: {exc}") from exc
+    if price_lo > price_hi:
+        raise ValueError("flow price_lo must be <= price_hi")
+    return {
+        "price_lo": price_lo,
+        "price_hi": price_hi,
+        "share_thr": share_thr,
+        "strict": bool(flow.get("strict", False)),
+    }
+
+
+def _flow_mask(df: pd.DataFrame, flow: dict[str, Any]) -> pd.Series:
+    """Per-fill BUY mask for the contrarian flow filter."""
+    share = (
+        pd.to_numeric(df["flow_own_usdc_60"], errors="coerce")
+        / pd.to_numeric(df["usdc_all_60"], errors="coerce").replace(0, np.nan)
+    )
+    price = pd.to_numeric(df["price"], errors="coerce")
+    mask = (
+        (df["side"] == "BUY")
+        & (price >= float(flow["price_lo"]))
+        & (price <= float(flow["price_hi"]))
+        & (share <= float(flow["share_thr"]))
+    )
+    if flow.get("strict"):
+        mask &= pd.to_numeric(df["price_chg_last_own"], errors="coerce") > 0
+    return mask.fillna(False)
+
+
+def _add_flow_variant_columns(
+    df: pd.DataFrame,
+    pnl_cols: list[str],
+    flow: dict[str, Any] | None,
+) -> pd.DataFrame:
+    """Materialise requested ``*_flow__{full,carved}`` columns on ``df``."""
+    flow_cols = [c for c in pnl_cols if _split_variant(c)[0] in _PNL_FLOW_VARIANTS]
+    if not flow_cols:
+        return df
+    if flow is None:
+        raise ValueError("flow PnL variants require a flow config")
+    mask = _flow_mask(df, flow)
+    carved = (
+        df["is_carved"].fillna(False).astype(bool)
+        if "is_carved" in df
+        else pd.Series(False, index=df.index)
+    )
+    for key in flow_cols:
+        base, stream = _split_variant(key)
+        source = _FLOW_BASE_SOURCES[base]
+        source_key = f"{source}__{stream}"
+        source_exp = f"{source_key}_exposure"
+        keep = mask if stream == "full" else (mask & carved)
+        df[key] = df[source_key].where(keep, 0.0)
+        df[f"{key}_exposure"] = df[source_exp].where(keep, 0.0)
+    return df
+
+
+def _normalize_fill_filters(filters: dict[str, Any] | None) -> dict[str, Any]:
+    """Validate / normalize the checkable fill filters sent by the page."""
+    if filters is None:
+        return {}
+    if not isinstance(filters, dict):
+        raise ValueError("filters must be an object")
+
+    out: dict[str, Any] = {}
+
+    price = filters.get("price")
+    if price is not None:
+        if not isinstance(price, dict):
+            raise ValueError("price filter must be an object")
+        try:
+            lo = float(price.get("lo", 0.0))
+            hi = float(price.get("hi", 1.0))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"price thresholds must be numbers: {exc}") from exc
+        if lo > hi:
+            raise ValueError("price lo must be <= hi")
+        out["price"] = (lo, hi)
+
+    size_share = filters.get("size_share")
+    if size_share is not None:
+        if isinstance(size_share, dict):
+            raw_max = size_share.get("max")
+        else:
+            raw_max = size_share
+        try:
+            out["size_share"] = float(raw_max)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"size_share threshold must be a number: {exc}") from exc
+
+    flow = filters.get("flow")
+    if flow is not None:
+        if not isinstance(flow, dict):
+            raise ValueError("flow filter must be an object")
+        try:
+            share_thr = float(flow.get("share_thr", 0.0))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"flow threshold must be a number: {exc}") from exc
+        out["flow"] = {
+            "share_thr": share_thr,
+            "strict": bool(flow.get("strict", False)),
+        }
+
+    if filters.get("carved"):
+        out["carved"] = True
+    if filters.get("copyable"):
+        out["copyable"] = True
+    return out
+
+
+def _fill_filter_mask(df: pd.DataFrame, filters: dict[str, Any]) -> pd.Series:
+    """Per-fill mask combining every checked fill filter."""
+    mask = pd.Series(True, index=df.index)
+
+    if "price" in filters:
+        lo, hi = filters["price"]
+        price = pd.to_numeric(df["price"], errors="coerce")
+        mask &= price.between(lo, hi).fillna(False)
+
+    if "size_share" in filters and "size_share" in df.columns:
+        size_share = pd.to_numeric(df["size_share"], errors="coerce")
+        mask &= (size_share <= filters["size_share"]).fillna(False)
+
+    if "flow" in filters:
+        if not _flow_available(df):
+            raise ValueError("flow filter requires the raw flow columns")
+        cfg = filters["flow"]
+        share = (
+            pd.to_numeric(df["flow_own_usdc_60"], errors="coerce")
+            / pd.to_numeric(df["usdc_all_60"], errors="coerce").replace(0, np.nan)
+        )
+        mask &= (df["side"] == "BUY")
+        mask &= (share <= cfg["share_thr"]).fillna(False)
+        if cfg.get("strict"):
+            mask &= (
+                pd.to_numeric(df["price_chg_last_own"], errors="coerce") > 0
+            ).fillna(False)
+
+    if filters.get("carved"):
+        if "is_carved" not in df.columns:
+            raise ValueError("carved filter requires an 'is_carved' column")
+        mask &= df["is_carved"].fillna(False).astype(bool)
+
+    if filters.get("copyable"):
+        if "copyable_qty_5m_100" not in df.columns:
+            raise ValueError("copyable filter requires 'copyable_qty_5m_100'")
+        qty = pd.to_numeric(df["copyable_qty_5m_100"], errors="coerce")
+        mask &= (qty > 0).fillna(False)
+
+    return mask.fillna(False)
+
+
+_FILTERED_PNL_COLS = ("pnl__full", "copyable_pnl__full")
+
+
+def _filters_cache_key(filters: dict[str, Any]) -> tuple[Any, ...]:
+    return tuple(
+        sorted(
+            (k, tuple(sorted(v.items())) if isinstance(v, dict) else v)
+            for k, v in filters.items()
+        )
+    )
+
+
 class _PnlPanel:
     """Builds (and caches) the train/test PnL figures for a wallet set."""
 
@@ -524,8 +794,19 @@ class _PnlPanel:
         *,
         exposure: bool,
         carve: bool,
+        carve_frac: float | None = None,
+        flow: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        key = (tuple(sorted(wallets)), tuple(pnl_cols), bool(exposure), bool(carve))
+        flow_key = None if flow is None else tuple(sorted(flow.items()))
+        carve_frac = None if carve_frac is None else float(carve_frac)
+        key = (
+            tuple(sorted(wallets)),
+            tuple(pnl_cols),
+            bool(exposure),
+            bool(carve),
+            carve_frac,
+            flow_key,
+        )
         with self._lock:
             cached = self._cache.get(key)
             if cached is not None:
@@ -533,8 +814,14 @@ class _PnlPanel:
                 return cached
 
         cohort = pd.DataFrame({"wallet": list(wallets)})
-        sub = self.fills[self.fills["wallet"].isin(wallets)]
-        fracs = self.exposure_fracs if carve else ()
+        sub = self.fills[self.fills["wallet"].isin(wallets)].copy()
+        sub = _add_flow_variant_columns(sub, list(pnl_cols), flow)
+        if carve and carve_frac is not None:
+            fracs: tuple[float, ...] = (carve_frac,)
+        elif carve:
+            fracs = self.exposure_fracs
+        else:
+            fracs = ()
         label = wallets[0] if len(wallets) == 1 else f"picked ({len(wallets)})"
         labels = {key: _variant_label(key) for key in pnl_cols}
         fit_col = self.fit_col or pnl_cols[0]
@@ -547,6 +834,73 @@ class _PnlPanel:
                 period=period,
                 title=f"{period.title()} — {label}",
                 pnl_cols=list(pnl_cols),
+                plot_exposure=exposure,
+                exposure_fracs=fracs,
+                carve_fit_col=fit_col,
+                plot_total=False,
+                pnl_col_labels=labels,
+            )
+            out[period] = json.loads(fig.to_json())
+
+        with self._lock:
+            self._cache[key] = out
+            while len(self._cache) > self.max_cache:
+                self._cache.popitem(last=False)
+        return out
+
+    def filtered_figures(
+        self,
+        wallets: list[str],
+        filters: dict[str, Any],
+        *,
+        exposure: bool,
+        carve: bool,
+        carve_frac: float | None = None,
+    ) -> dict[str, Any]:
+        carve_frac = None if carve_frac is None else float(carve_frac)
+        key = (
+            tuple(sorted(wallets)),
+            _filters_cache_key(filters),
+            bool(exposure),
+            bool(carve),
+            carve_frac,
+        )
+        with self._lock:
+            cached = self._cache.get(key)
+            if cached is not None:
+                self._cache.move_to_end(key)
+                return cached
+
+        cohort = pd.DataFrame({"wallet": list(wallets)})
+        sub = self.fills[self.fills["wallet"].isin(wallets)].copy()
+        mask = _fill_filter_mask(sub, filters)
+        sub = sub.loc[mask].copy()
+        if carve and carve_frac is not None:
+            fracs: tuple[float, ...] = (carve_frac,)
+        elif carve:
+            fracs = self.exposure_fracs
+        else:
+            fracs = ()
+        label = wallets[0] if len(wallets) == 1 else f"picked ({len(wallets)})"
+        suffix = " (filtered)" if filters else ""
+        labels = {
+            "pnl__full": f"wallet pnl{suffix}",
+            "copyable_pnl__full": f"copyable pnl{suffix}",
+        }
+        fit_col = self.fit_col or "copyable_pnl__full"
+        out: dict[str, Any] = {
+            "label": label,
+            "wallets": len(wallets),
+            "filters": sorted(filters),
+        }
+        for period in ("train", "test"):
+            fig = plot_wallet_selection_pnl(
+                sub,
+                {"picked": cohort},
+                split_date=self.split_date,
+                period=period,
+                title=f"{period.title()} — {label}",
+                pnl_cols=list(_FILTERED_PNL_COLS),
                 plot_exposure=exposure,
                 exposure_fracs=fracs,
                 carve_fit_col=fit_col,
@@ -605,6 +959,17 @@ aside .search { width: 100%; padding: 5px 8px; border: 1px solid var(--border); 
                 font: inherit; margin-bottom: 4px; }
 .memRow label { display: flex; gap: 6px; align-items: center; cursor: pointer; margin: 3px 0; }
 .presetNote { color: var(--muted); font-size: 11px; margin: 2px 0 6px; }
+.flowRow { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.flowRow label { color: var(--muted); font-size: 11px; flex: 0 0 74px; }
+.flowRow input[type=number], .flowRow select { flex: 1 1 0; min-width: 0; padding: 3px 5px;
+  border: 1px solid var(--border); border-radius: 4px; font: inherit; }
+.flowNote { color: var(--muted); font-size: 11px; margin: 2px 0 6px; }
+.filterRow { display: flex; align-items: center; gap: 6px; margin: 4px 0; flex-wrap: wrap; }
+.filterRow > label.filterCheck { display: flex; gap: 4px; align-items: center; color: var(--text);
+  font-size: 11px; cursor: pointer; flex: 0 0 118px; }
+.filterRow input[type=number] { flex: 1 1 0; min-width: 40px; padding: 3px 5px;
+  border: 1px solid var(--border); border-radius: 4px; font: inherit; }
+.filterRow .sep { color: var(--muted); }
 details.cols { border: 1px solid var(--border); border-radius: 6px; margin-top: 8px; }
 details.cols summary { cursor: pointer; padding: 6px 8px; font-weight: 600; color: var(--muted); }
 details.cols[open] summary { border-bottom: 1px solid var(--border); }
@@ -665,9 +1030,6 @@ main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .ctl { display: flex; gap: 4px; align-items: center; color: var(--muted); cursor: pointer;
        font-size: 12px; }
 .pnlStatus { color: var(--muted); font-size: 11px; margin-left: auto; }
-.variantBoxes { display: flex; gap: 4px 12px; flex-wrap: wrap; width: 100%; }
-.variantBoxes label { display: flex; gap: 3px; align-items: center; font-size: 11px;
-                      color: var(--muted); cursor: pointer; }
 .detailPlots { display: grid; grid-template-columns: 1fr; gap: 10px; }
 .noData { color: var(--muted); font-size: 12px; padding: 8px 0; }
 @media (max-width: 1100px) { #layout { grid-template-columns: 260px minmax(0,1fr); } }
@@ -715,6 +1077,7 @@ td.flag.on { color: var(--text); font-weight: 650; }
 <div id="layout">
   <aside id="filters">
     <input class="search" id="colSearch" placeholder="search columns...">
+    <div id="flowBox"></div>
     <div id="memBox"></div>
     <div id="presetBox"></div>
     <div id="colBoxes"></div>
@@ -744,7 +1107,6 @@ td.flag.on { color: var(--text); font-weight: 650; }
         <label class="ctl"><input type="checkbox" id="toggleExposure" checked> exposures</label>
         <label class="ctl"><input type="checkbox" id="toggleCarve" checked> carved fracs</label>
         <span class="pnlStatus" id="pnlStatus"></span>
-        <div class="variantBoxes" id="variantBoxes"></div>
       </div>
       <div class="detailPlots">
         <div id="plotTrain"></div>
@@ -781,7 +1143,9 @@ td.flag.on { color: var(--text); font-weight: 650; }
   const WALLETS = DATA.wallets;
   const WIDX = new Map(WALLETS.map((w, i) => [w.wallet, i]));
   const FLAGS = DATA.flags || [];
-  const PNL_VARIANTS = DATA.pnlVariants || [];
+  const FILL_FILTERS = DATA.pnlFilters || [];
+  const FILTER_DEFAULTS = DATA.filterDefaults || {};
+  const FILTER_KEYS = new Set(FILL_FILTERS.map(f => f.key));
 
   const state = {
     filters: {},
@@ -800,10 +1164,31 @@ td.flag.on { color: var(--text); font-weight: 650; }
     pickAnchor: null,
     shownWallets: [],
     detailMode: 'wallet',
-    pnlVariants: new Set(
-      PNL_VARIANTS.filter(v => v.default !== false).map(v => v.key)),
+    fillFilters: {
+      price: {
+        on: false,
+        lo: FILTER_DEFAULTS.price_lo !== undefined ? FILTER_DEFAULTS.price_lo : 0.0,
+        hi: FILTER_DEFAULTS.price_hi !== undefined ? FILTER_DEFAULTS.price_hi : 1.0,
+      },
+      size_share: {
+        on: false,
+        max: FILTER_DEFAULTS.size_share_max !== undefined && FILTER_DEFAULTS.size_share_max !== null
+          ? FILTER_DEFAULTS.size_share_max
+          : 0.0,
+      },
+      flow: {
+        on: false,
+        share_thr: FILTER_DEFAULTS.flow_share_max !== undefined ? FILTER_DEFAULTS.flow_share_max : -0.10,
+        strict: !!FILTER_DEFAULTS.flow_strict,
+      },
+      carved: false,
+      copyable: false,
+    },
     showExposure: true,
     showCarve: true,
+    carveFrac: DATA.flowDefaults && DATA.flowDefaults.carve_frac !== null
+      ? DATA.flowDefaults.carve_frac
+      : ((DATA.flowCarveFracs || [])[0] !== undefined ? DATA.flowCarveFracs[0] : null),
   };
   let passMask = [];
 
@@ -1029,6 +1414,109 @@ td.flag.on { color: var(--text); font-weight: 650; }
         if (parent) parent.open = true;
       });
     });
+  }
+
+  // ---------------- fill filter controls ----------------
+  function buildFillFilterControls() {
+    const box = $('#flowBox');
+    const fracs = DATA.flowCarveFracs || [];
+    if (!FILL_FILTERS.length && !fracs.length) return;
+
+    let html = '<h3>Fill filters</h3>';
+    if (FILTER_KEYS.has('price')) {
+      html +=
+        '<div class="filterRow">' +
+          '<label class="filterCheck"><input type="checkbox" id="filterPrice"> price band</label>' +
+          '<input id="priceLo" type="number" step="any" value="' + state.fillFilters.price.lo + '">' +
+          '<span class="sep">–</span>' +
+          '<input id="priceHi" type="number" step="any" value="' + state.fillFilters.price.hi + '">' +
+        '</div>';
+    }
+    if (FILTER_KEYS.has('size_share')) {
+      html +=
+        '<div class="filterRow">' +
+          '<label class="filterCheck"><input type="checkbox" id="filterSizeShare"> size share ≤</label>' +
+          '<input id="sizeShareMax" type="number" step="any" value="' + state.fillFilters.size_share.max + '">' +
+        '</div>';
+    }
+    if (FILTER_KEYS.has('flow')) {
+      html +=
+        '<div class="filterRow">' +
+          '<label class="filterCheck"><input type="checkbox" id="filterFlow"> flow share ≤</label>' +
+          '<input id="flowThr" type="number" step="any" value="' + state.fillFilters.flow.share_thr + '">' +
+          '<label class="filterCheck" style="flex:0 0 auto"><input type="checkbox" id="flowStrict"' +
+          (state.fillFilters.flow.strict ? ' checked' : '') + '> strict</label>' +
+        '</div>';
+    } else if (DATA.flowAvailable === false) {
+      html += '<div class="flowNote">flow columns not available — flow filter disabled</div>';
+    }
+    if (FILTER_KEYS.has('carved')) {
+      html +=
+        '<div class="filterRow">' +
+          '<label class="filterCheck"><input type="checkbox" id="filterCarved"> carved fills only</label>' +
+        '</div>';
+    }
+    if (FILTER_KEYS.has('copyable')) {
+      html +=
+        '<div class="filterRow">' +
+          '<label class="filterCheck"><input type="checkbox" id="filterCopyable"> copyable qty > 0</label>' +
+        '</div>';
+    }
+    if (fracs.length) {
+      html += '<div class="flowRow"><label>exposure carve</label><select id="flowCarve">' +
+        fracs.map(fr => '<option value="' + fr + '"' +
+          (state.carveFrac === fr ? ' selected' : '') + '>' + fr + '</option>').join('') +
+        '</select></div>';
+    }
+    box.innerHTML = html;
+
+    function syncFilterState() {
+      if (FILTER_KEYS.has('price')) {
+        state.fillFilters.price.on = $('#filterPrice').checked;
+        state.fillFilters.price.lo = Number($('#priceLo').value);
+        state.fillFilters.price.hi = Number($('#priceHi').value);
+        if (state.fillFilters.price.lo > state.fillFilters.price.hi) {
+          state.fillFilters.price.hi = state.fillFilters.price.lo;
+          $('#priceHi').value = state.fillFilters.price.hi;
+        }
+      }
+      if (FILTER_KEYS.has('size_share')) {
+        state.fillFilters.size_share.on = $('#filterSizeShare').checked;
+        state.fillFilters.size_share.max = Number($('#sizeShareMax').value);
+      }
+      if (FILTER_KEYS.has('flow')) {
+        state.fillFilters.flow.on = $('#filterFlow').checked;
+        state.fillFilters.flow.share_thr = Number($('#flowThr').value);
+        state.fillFilters.flow.strict = $('#flowStrict').checked;
+        $('#flowStrict').disabled = !state.fillFilters.flow.on;
+      }
+      if (FILTER_KEYS.has('carved')) {
+        state.fillFilters.carved = $('#filterCarved').checked;
+      }
+      if (FILTER_KEYS.has('copyable')) {
+        state.fillFilters.copyable = $('#filterCopyable').checked;
+      }
+      renderPnl();
+    }
+
+    [
+      '#filterPrice', '#priceLo', '#priceHi',
+      '#filterSizeShare', '#sizeShareMax',
+      '#filterFlow', '#flowThr', '#flowStrict',
+      '#filterCarved', '#filterCopyable',
+    ].forEach(id => {
+      const el = $(id);
+      if (el) el.addEventListener('change', syncFilterState);
+    });
+    if (FILTER_KEYS.has('flow')) {
+      $('#flowStrict').disabled = !state.fillFilters.flow.on;
+    }
+    if (fracs.length) {
+      $('#flowCarve').addEventListener('change', ev => {
+        state.carveFrac = Number(ev.target.value);
+        renderPnl();
+      });
+    }
   }
 
   // ---------------- axis / color selects ----------------
@@ -1364,16 +1852,31 @@ td.flag.on { color: var(--text); font-weight: 650; }
     Plotly.react(div, fig.data, layout, {displaylogo: false, responsive: true});
   }
 
+  function buildFiltersPayload() {
+    const f = state.fillFilters;
+    const out = {};
+    if (FILTER_KEYS.has('price') && f.price.on) {
+      out.price = {lo: f.price.lo, hi: f.price.hi};
+    }
+    if (FILTER_KEYS.has('size_share') && f.size_share.on) {
+      out.size_share = {max: f.size_share.max};
+    }
+    if (FILTER_KEYS.has('flow') && f.flow.on) {
+      out.flow = {share_thr: f.flow.share_thr, strict: f.flow.strict};
+    }
+    if (FILTER_KEYS.has('carved') && f.carved) out.carved = true;
+    if (FILTER_KEYS.has('copyable') && f.copyable) out.copyable = true;
+    return out;
+  }
+
   async function renderPnl() {
     clearTimeout(pnlTimer);
-    if (!PNL_VARIANTS.length) {
+    if (!FILL_FILTERS.length) {
       showPnlMessage('no fills passed to the explorer (PnL panels disabled)');
       $('#pnlStatus').textContent = '';
       return;
     }
     const wallets = pnlWallets();
-    const variants = PNL_VARIANTS.map(v => v.key)
-      .filter(k => state.pnlVariants.has(k));
     if (!wallets.length) {
       showPnlMessage(state.detailMode === 'agg'
         ? 'pick wallets (click / lasso) to show their aggregate PnL'
@@ -1381,11 +1884,7 @@ td.flag.on { color: var(--text); font-weight: 650; }
       $('#pnlStatus').textContent = '';
       return;
     }
-    if (!variants.length) {
-      showPnlMessage('select at least one PnL variant above');
-      $('#pnlStatus').textContent = '';
-      return;
-    }
+    const filters = buildFiltersPayload();
     const reqId = ++pnlReqId;
     $('#pnlStatus').textContent = 'loading…';
     try {
@@ -1394,9 +1893,10 @@ td.flag.on { color: var(--text); font-weight: 650; }
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           wallets,
-          variants,
+          filters,
           exposure: state.showExposure,
           carve: state.showCarve,
+          carveFrac: state.carveFrac,
         }),
       });
       if (!r.ok) throw new Error(await r.text());
@@ -1404,8 +1904,10 @@ td.flag.on { color: var(--text); font-weight: 650; }
       if (reqId !== pnlReqId) return;
       showFigure('plotTrain', data.train);
       showFigure('plotTest', data.test);
+      const filterCount = (data.filters || []).length;
       $('#pnlStatus').textContent = data.label + ' · ' + wallets.length +
-        ' wallet' + (wallets.length === 1 ? '' : 's');
+        ' wallet' + (wallets.length === 1 ? '' : 's') +
+        (filterCount ? ' · ' + filterCount + ' filter' + (filterCount === 1 ? '' : 's') : '');
     } catch (e) {
       if (reqId !== pnlReqId) return;
       showPnlMessage('failed to build PnL panel: ' + esc(String(e)));
@@ -1421,24 +1923,12 @@ td.flag.on { color: var(--text); font-weight: 650; }
   }
 
   function buildDetailControls() {
-    if (!PNL_VARIANTS.length) {
+    if (!FILL_FILTERS.length) {
       ['viewWallet', 'viewAgg', 'toggleExposure', 'toggleCarve'].forEach(id => {
         $('#' + id).disabled = true;
       });
       return;
     }
-    const boxes = $('#variantBoxes');
-    PNL_VARIANTS.forEach(v => {
-      const label = document.createElement('label');
-      label.innerHTML = '<input type="checkbox"' +
-        (state.pnlVariants.has(v.key) ? ' checked' : '') + '> ' + esc(v.label);
-      label.querySelector('input').addEventListener('change', ev => {
-        if (ev.target.checked) state.pnlVariants.add(v.key);
-        else state.pnlVariants.delete(v.key);
-        renderPnl();
-      });
-      boxes.appendChild(label);
-    });
 
     function activateView() {
       $('#viewWallet').classList.toggle('active', state.detailMode === 'wallet');
@@ -1489,6 +1979,24 @@ td.flag.on { color: var(--text); font-weight: 650; }
       picked: Array.from(state.picked).sort(),
       passing: passing.sort(),
       counts: {pool: WALLETS.length, passing: passing.length, picked: state.picked.size},
+      fillFilters: {
+        price: Object.assign({}, state.fillFilters.price),
+        size_share: Object.assign({}, state.fillFilters.size_share),
+        flow: Object.assign({}, state.fillFilters.flow),
+        carved: !!state.fillFilters.carved,
+        copyable: !!state.fillFilters.copyable,
+      },
+      flow: {
+        price_lo: state.fillFilters.price.on
+          ? state.fillFilters.price.lo
+          : (DATA.flowDefaults ? DATA.flowDefaults.price_lo : 0.20),
+        price_hi: state.fillFilters.price.on
+          ? state.fillFilters.price.hi
+          : (DATA.flowDefaults ? DATA.flowDefaults.price_hi : 0.50),
+        share_thr: state.fillFilters.flow.share_thr,
+        strict: !!state.fillFilters.flow.strict,
+      },
+      carveFrac: state.carveFrac,
     };
     const btn = $('#btnSave');
     const label = btn.textContent;
@@ -1532,6 +2040,7 @@ td.flag.on { color: var(--text); font-weight: 650; }
 
   applyPresets();
   buildSidebar();
+  buildFillFilterControls();
 
   fillOptionSelect($('#xSel'));
   fillOptionSelect($('#ySel'));
@@ -1720,13 +2229,47 @@ class _Handler(BaseHTTPRequestHandler):
             self._text(400, "expected a JSON object")
             return
         wallets = data.get("wallets")
-        variants = data.get("variants")
         if not isinstance(wallets, list) or not all(isinstance(w, str) for w in wallets):
             self._text(400, "wallets must be a list of wallet addresses")
             return
         if not wallets:
             self._text(400, "wallets must not be empty")
             return
+        if state.panel is None:
+            self._text(400, "PnL panels are disabled (no fills passed)")
+            return
+
+        carve_frac = data.get("carveFrac")
+        if carve_frac is not None:
+            try:
+                carve_frac = float(carve_frac)
+            except (TypeError, ValueError):
+                self._text(400, "carveFrac must be a number")
+                return
+        wallets = list(dict.fromkeys(wallets))
+
+        if "filters" in data:
+            try:
+                filters = _normalize_fill_filters(data.get("filters"))
+            except ValueError as exc:
+                self._text(400, str(exc))
+                return
+            try:
+                result = state.panel.filtered_figures(
+                    wallets,
+                    filters,
+                    exposure=bool(data.get("exposure", True)),
+                    carve=bool(data.get("carve", False)),
+                    carve_frac=carve_frac,
+                )
+            except Exception as exc:  # noqa: BLE001
+                self._text(500, f"failed to build PnL panel: {exc}")
+                return
+            body = json.dumps(result).encode("utf-8")
+            self._send(200, body, "application/json", body_gz=gzip.compress(body))
+            return
+
+        variants = data.get("variants")
         if not isinstance(variants, list) or not all(isinstance(v, str) for v in variants):
             self._text(400, "variants must be a list of PnL column names")
             return
@@ -1737,16 +2280,22 @@ class _Handler(BaseHTTPRequestHandler):
         if unknown:
             self._text(400, f"unknown PnL variants {unknown}")
             return
-        if state.panel is None:
-            self._text(400, "PnL panels are disabled (no fills passed)")
+        try:
+            flow = _normalize_flow(data.get("flow"))
+        except ValueError as exc:
+            self._text(400, str(exc))
             return
-        wallets = list(dict.fromkeys(wallets))
+        if any(_split_variant(v)[0] in _PNL_FLOW_VARIANTS for v in variants) and flow is None:
+            self._text(400, "flow PnL variants require a flow config")
+            return
         try:
             result = state.panel.figures(
                 wallets,
                 variants,
                 exposure=bool(data.get("exposure", True)),
                 carve=bool(data.get("carve", False)),
+                carve_frac=carve_frac,
+                flow=flow,
             )
         except Exception as exc:  # noqa: BLE001
             self._text(500, f"failed to build PnL panel: {exc}")
@@ -1829,6 +2378,11 @@ def open_wallet_filter_explorer(
     fills: pd.DataFrame | None = None,
     split_date: Any | None = None,
     exposure_fracs: Iterable[float] = (),
+    flow_price_lo: float = 0.20,
+    flow_price_hi: float = 0.50,
+    flow_share_thr: float = -0.10,
+    flow_strict: bool = False,
+    flow_carve_frac: float | None = None,
     out_dir: str | Path,
     port: int = 0,
     open_browser: bool = True,
@@ -1846,20 +2400,29 @@ def open_wallet_filter_explorer(
         Defaults of the stage-1 masks; enable the membership checkboxes.
     fills:
         Fill-level **pre-carve** BUY stream with ``wallet, dt, side, price,
-        position, notional, last_condition_trade_ts, is_train``, the PnL
-        variants (``pnl``, ``pnl_limited``, ``copyable_pnl``,
-        ``copyable_pnl_limited``), their qty columns, and optionally
-        ``is_carved`` (when present the panels offer both the full and the
-        carved stream). Enables the train/test PnL panels and the test-active
-        flag.
+        position, notional, last_condition_trade_ts, is_train`` and the PnL
+        columns (``pnl``, ``pnl_limited``, ``copyable_pnl``,
+        ``copyable_pnl_limited``) plus their qty columns. Optional columns
+        enable the matching checkable fill filters: ``size_share``,
+        ``is_carved``, ``copyable_qty_5m_100``, and the raw flow columns
+        (``flow_own_usdc_60``, ``usdc_all_60``, ``price_chg_last_own``).
+        Enables the train/test PnL panels and the test-active flag.
     split_date:
         Train/test boundary (defaults to the last ``last_condition_trade_ts``
         among the ``is_train`` fills).
     exposure_fracs:
-        Deployed-capital carve fractions passed to
-        :func:`~polymarket_analysis.visualization.wallet_plots.plot_wallet_selection_pnl`;
-        pass the notebook's ``EXPOSURE_FRACS`` minus the frac that was already
-        applied as ``is_carved`` to avoid duplicates.
+        Deployed-capital carve fractions offered in the page (carve overlays and
+        the tuneable exposure-carve selector). The selected fraction is applied
+        to the PnL panels via
+        :func:`~polymarket_analysis.visualization.wallet_plots.plot_wallet_selection_pnl`.
+    flow_price_lo, flow_price_hi, flow_share_thr, flow_strict:
+        Defaults of the contrarian flow overlay (price band, signed flow-share
+        threshold, optional uptick). ``flow_share_thr`` / ``flow_strict`` seed
+        the checkable flow filter; the price band is kept for the saved
+        selection's legacy flow config.
+    flow_carve_frac:
+        Default exposure-carve fraction used by the flow-limited / carved PnL
+        overlays.
     out_dir:
         Directory where ``wallet_filter_selection_{variant}.json`` is written on
         "Save selection".
@@ -1871,6 +2434,7 @@ def open_wallet_filter_explorer(
 
     eligible = None if eligible_wallets is None else set(map(str, eligible_wallets))
     selected = None if selected_wallets is None else set(map(str, selected_wallets))
+    exposure_fracs = tuple(float(f) for f in exposure_fracs)
 
     payload = build_payload(
         full_stats,
@@ -1879,6 +2443,12 @@ def open_wallet_filter_explorer(
         eligible_wallets=eligible,
         selected_wallets=selected,
         fills=fills,
+        exposure_fracs=exposure_fracs,
+        flow_price_lo=flow_price_lo,
+        flow_price_hi=flow_price_hi,
+        flow_share_thr=flow_share_thr,
+        flow_strict=flow_strict,
+        flow_carve_frac=flow_carve_frac,
     )
     payload_json = json.dumps(payload).encode("utf-8")
 

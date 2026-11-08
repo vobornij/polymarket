@@ -53,6 +53,10 @@ _GROUP_KEYS = ["tx_hash", "wallet", "side", "token_id"]
 _CAT_COLS = ["tx_hash", "wallet", "condition_id", "token_id", "side", "outcome"]
 
 
+# Columns added by the backward-flow kernel in fill_extender.
+FLOW_COLS = ["flow_own_usdc_60", "usdc_all_60", "price_chg_last_own"]
+
+
 def _read_cols(variants: list[tuple[int, float]]) -> list[str]:
     """All columns needed to group and export one enriched shard."""
     cols = [
@@ -66,6 +70,7 @@ def _read_cols(variants: list[tuple[int, float]]) -> list[str]:
         if abs(factor - 1.0) < 1e-12:
             cols.append(avail_copy_total_vol_col(window_seconds, factor))
             cols.append(avail_copy_count_col(window_seconds, factor))
+    cols.extend(FLOW_COLS)
     return cols
 
 
@@ -99,6 +104,7 @@ def _export_cols(variants: list[tuple[int, float]]) -> list[str]:
         if k == 0 and abs(factor - 1.0) < 1e-12:
             cols.append(avail_copy_total_vol_col(window_seconds, factor))
             cols.append(avail_copy_count_col(window_seconds, factor))
+    cols.extend(FLOW_COLS)
     return cols
 
 
@@ -341,6 +347,11 @@ def group_and_export_shard(
         "final_value_usdc":       ("final_value_usdc",       "sum"),
         "num_fills":              ("log_index",              "count"),
     }
+    # Flow features are backward-looking point-in-time values — all fills in
+    # the same (tx, wallet, side, token) group share the same block timestamp
+    # and therefore the same prior-60s window; ``first`` is correct.
+    for fc in FLOW_COLS:
+        agg_dict[fc] = (fc, "first")
     for k, (window_seconds, factor) in enumerate(variants):
         qty_col = avail_copy_qty_col(window_seconds, factor)
         agg_dict[qty_col] = (qty_col, "max")

@@ -118,6 +118,7 @@ def test_enrich_shard_values_and_schema(shard_dirs):
         "avail_copy_count_5m_100", avail_copy_qty_col(300, 0.95),
         copyable_qty_col(300, 1.0), copyable_qty_col(300, 0.95),
         "last_condition_trade_ts",
+        "flow_own_usdc_60", "usdc_all_60", "price_chg_last_own",
     ]
     assert len(enr) == 6
 

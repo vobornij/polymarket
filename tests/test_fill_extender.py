@@ -6,6 +6,8 @@ import pandas as pd
 
 from polymarket_analysis.preprocessing.fill_extender import (
     COPY_VARIANTS,
+    FLOW_WINDOW_S,
+    _backward_flow_kernel,
     avail_copy_count_col,
     avail_copy_qty_col,
     avail_copy_total_vol_col,
@@ -226,3 +228,106 @@ class TestReferenceImplementation:
                         cq = min(r['quantity'], r[col])
                         print(f"  {str(r['ts']):>22} {str(r['tx_hash'])[:28]:>28}  {r['side']:6} {tok:4} {r['price']:>7.4f} {tp:>7.4f} {r['quantity']:>8.1f} {r[col]:>10.2f} {cq:>10.2f}")
                     print(f"  Sum copyable_qty = {p_cq[at_ts.values].sum():.2f}")
+
+
+# ---------------------------------------------------------------------------
+# Backward flow kernel tests
+# ---------------------------------------------------------------------------
+
+def _reference_backward_flow(ts, usdc, is_buy_of_T, is_token, price, window_ns):
+    """O(n²) reference for _backward_flow_kernel."""
+    n = len(ts)
+    res_flowT = np.zeros(n)
+    res_usdc_all = np.zeros(n)
+    res_pchg_own = np.full(n, np.nan)
+
+    for i in range(n):
+        # window: [ts[i] - window_ns, ts[i])
+        lo = ts[i] - window_ns
+        for j in range(n):
+            if lo <= ts[j] < ts[i]:
+                if is_buy_of_T[j]:
+                    res_flowT[i] += usdc[j]
+                else:
+                    res_flowT[i] -= usdc[j]
+                res_usdc_all[i] += usdc[j]
+
+        # price_chg_last_own: last own-token trade price before row i
+        last_own = np.nan
+        for j in range(n):
+            if ts[j] < ts[i] and is_token[j] == is_token[i]:
+                last_own = price[j]  # keep updating → last one wins
+        if not np.isnan(last_own):
+            res_pchg_own[i] = price[i] - last_own
+
+    return res_flowT, res_usdc_all, res_pchg_own
+
+
+def test_backward_flow_kernel_synthetic():
+    """Synthetic 2-token dataset: verify kernel against O(n²) reference."""
+    # ts (seconds), token (True=T, False=C), side (True=BUY), price, usdc
+    # is_buy_of_T = is_token & is_buy  OR  ~is_token & ~is_buy
+    ts = np.array([0, 1, 2, 30, 31, 50, 55, 61, 62, 100], dtype=np.int64) * 1_000_000_000
+    is_token = np.array([True, True, False, True, False, True, False, True, True, False])
+    is_buy = np.array([True, False, True, True, False, True, True, False, True, False])
+    price = np.array([0.40, 0.42, 0.55, 0.45, 0.50, 0.48, 0.52, 0.44, 0.46, 0.58])
+    usdc = np.array([100.0, 50.0, 80.0, 120.0, 60.0, 90.0, 70.0, 110.0, 40.0, 130.0])
+    is_buy_of_T = np.where(is_token, is_buy, ~is_buy)
+
+    window_ns = 60 * 1_000_000_000
+
+    got_flowT, got_usdc_all, got_pchg = _backward_flow_kernel(
+        ts, usdc, is_buy_of_T, is_token, price, window_ns,
+    )
+    ref_flowT, ref_usdc_all, ref_pchg = _reference_backward_flow(
+        ts, usdc, is_buy_of_T, is_token, price, window_ns,
+    )
+
+    np.testing.assert_allclose(got_flowT, ref_flowT, rtol=1e-10, atol=1e-10)
+    np.testing.assert_allclose(got_usdc_all, ref_usdc_all, rtol=1e-10, atol=1e-10)
+
+    # price_chg: compare only non-NaN positions
+    got_mask = ~np.isnan(got_pchg)
+    ref_mask = ~np.isnan(ref_pchg)
+    assert (got_mask == ref_mask).all(), f"NaN pattern mismatch: {got_mask} vs {ref_mask}"
+    np.testing.assert_allclose(got_pchg[got_mask], ref_pchg[ref_mask], rtol=1e-10, atol=1e-10)
+
+
+def test_backward_flow_kernel_edge_cases():
+    """Single-row and empty-input edge cases."""
+    # Single row: no prior trades → flow=0, usdc_all=0, pchg=NaN
+    ts1 = np.array([100], dtype=np.int64) * 1_000_000_000
+    usdc1 = np.array([50.0])
+    ibt1 = np.array([True])
+    it1 = np.array([True])
+    p1 = np.array([0.5])
+
+    f, u, pc = _backward_flow_kernel(ts1, usdc1, ibt1, it1, p1, 60 * 1_000_000_000)
+    assert f[0] == 0.0
+    assert u[0] == 0.0
+    assert np.isnan(pc[0])
+
+
+def test_backward_flow_kernel_window_boundary():
+    """Verify that the window is [t-60s, t) — inclusive lower, exclusive upper."""
+    # Rows at t=0, 59, 60, 61 — query at t=61 should see rows at t=1 and t=60
+    # (t=1 is at the boundary t-60=1, inclusive; t=61 itself is excluded).
+    ts = np.array([0, 1, 60, 61], dtype=np.int64) * 1_000_000_000
+    usdc = np.array([10.0, 20.0, 30.0, 40.0])
+    # All rows buy of T → positive flow
+    is_buy_of_T = np.array([True, True, True, True])
+    is_token = np.array([True, True, True, True])
+    price = np.array([0.5, 0.5, 0.5, 0.5])
+
+    f, u, _ = _backward_flow_kernel(
+        ts, usdc, is_buy_of_T, is_token, price, 60 * 1_000_000_000,
+    )
+    # Row at ts=61: window is [1, 61) → rows at ts=1 and ts=60 → usdc_all=50
+    assert u[3] == 50.0
+    assert f[3] == 50.0
+    # Row at ts=60: window is [0, 60) → rows at ts=0 and ts=1 → usdc_all=30
+    assert u[2] == 30.0
+    # Row at ts=1: window is [-59, 1) → only row at ts=0 → usdc_all=10
+    assert u[1] == 10.0
+    # Row at ts=0: no prior → usdc_all=0
+    assert u[0] == 0.0
