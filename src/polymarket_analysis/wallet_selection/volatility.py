@@ -96,7 +96,7 @@ def _wallet_daily_sharpe(df: pd.DataFrame, pnl_col: str = "pnl") -> pd.Series:
     *pnl_col*.  Returns a Series indexed by wallet (wallets without rows are
     simply absent, so alignment yields NaN for them).
     """
-    daily_pnl = df.groupby(["wallet", "_date"], sort=False)[pnl_col].sum().reset_index()
+    daily_pnl = df.groupby(["wallet", "_date"], sort=False, observed=True)[pnl_col].sum().reset_index()
     return daily_pnl.groupby("wallet", sort=False).apply(
         lambda sub: _daily_sharpe(sub.set_index("_date")[pnl_col]),
         include_groups=False,
@@ -119,7 +119,7 @@ def _copyable_pnl_similarity(
     negative (``"loss"``) wallet PnL.  Returns NaN for wallets with fewer
     than ``MIN_SIMILARITY_BUCKETS`` active buckets or a zero-norm curve.
     """
-    tb = df.groupby(["wallet", "dt_floored"], sort=False)[["pnl", copyable_col]].sum()
+    tb = df.groupby(["wallet", "dt_floored"], sort=False, observed=True)[["pnl", copyable_col]].sum()
     if subset == "profit":
         tb = tb[tb["pnl"] > 0]
     elif subset == "loss":
@@ -190,7 +190,7 @@ def _wallet_metrics_from_buckets(buckets: pd.DataFrame) -> pd.DataFrame:
     piv = df.pivot_table(
         index="wallet", columns="side",
         values=["pnl", "quantity", "notional", "copyable_qty", "copyable_pnl"],
-        aggfunc="sum", sort=False, fill_value=0.0)
+        aggfunc="sum", sort=False, fill_value=0.0, observed=True)
 
     def side_sum(var: str, side: str) -> pd.Series:
         return piv[(var, side)] if (var, side) in piv.columns else 0.0
@@ -214,7 +214,7 @@ def _wallet_metrics_from_buckets(buckets: pd.DataFrame) -> pd.DataFrame:
         float("nan"))
 
     df["dt_1h"] = df["dt_floored"].dt.floor("1h")
-    bucket_pnls = df.groupby(["wallet", "dt_1h", "condition_id"], sort=False)["pnl"].sum()
+    bucket_pnls = df.groupby(["wallet", "dt_1h", "condition_id"], sort=False, observed=True)["pnl"].sum()
     total_pnl_s = res["total_pnl"]
 
     def topn_pct(bp: pd.Series, n: int, ascending: bool) -> pd.Series:
@@ -227,7 +227,7 @@ def _wallet_metrics_from_buckets(buckets: pd.DataFrame) -> pd.DataFrame:
     res["worst5_pnl_pct"] = topn_pct(bucket_pnls, 5, True)
     res["positive_bucket_share"] = (bucket_pnls > 0).groupby("wallet", sort=False).mean()
 
-    market_pnls = df.groupby(["wallet", "condition_id"], sort=False)["pnl"].sum()
+    market_pnls = df.groupby(["wallet", "condition_id"], sort=False, observed=True)["pnl"].sum()
     res["top_market_pnl_pct"] = market_pnls.groupby("wallet", sort=False).max() / total_pnl_s
     abs_market_pnls = market_pnls.abs()
     abs_market_total = abs_market_pnls.groupby("wallet", sort=False).sum()

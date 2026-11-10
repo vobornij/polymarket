@@ -43,13 +43,9 @@ _STATS = {
 
 
 @pytest.fixture()
-def frames():
+def stats():
     median_dt = pd.to_datetime(["2025-12-01"] * len(WALLETS), utc=True)
-    full = pd.DataFrame({"wallet": WALLETS, **_STATS, "median_dt": median_dt})
-    carved = full.copy()
-    carved["total_pnl"] = carved["total_pnl"] * 0.9
-    carved["buy_roi"] = carved["buy_roi"] * 1.05
-    return full, carved
+    return pd.DataFrame({"wallet": WALLETS, **_STATS, "median_dt": median_dt})
 
 
 @pytest.fixture()
@@ -62,15 +58,12 @@ def fills():
                     "wallet": wallet,
                     "dt": pd.Timestamp("2025-11-01", tz="UTC") + pd.Timedelta(days=i),
                     "pnl": 1.0,
-                    "pnl_limited": 0.8,
                     "copyable_pnl": 0.5,
-                    "copyable_pnl_limited": 0.4,
                     "is_train": True,
                     "side": "BUY",
                     "price": 2.0,
                     "position": 1.0,
                     "notional": 2.0,
-                    "deployed_capital_frac": 1.0,
                     "copyable_qty_5m_100": 1.0,
                     "size_share": 0.1 + i * 0.1,
                 }
@@ -81,26 +74,18 @@ def fills():
                     "wallet": wallet,
                     "dt": pd.Timestamp("2025-12-20", tz="UTC") + pd.Timedelta(days=i),
                     "pnl": 2.0,
-                    "pnl_limited": 1.6,
                     "copyable_pnl": 1.0,
-                    "copyable_pnl_limited": 0.8,
                     "is_train": False,
                     "side": "BUY",
                     "price": 2.0,
                     "position": 1.0,
                     "notional": 2.0,
-                    "deployed_capital_frac": 1.0,
                     "copyable_qty_5m_100": 1.0,
                     "size_share": 0.4 + i * 0.1,
                 }
             )
     df = pd.DataFrame(rows)
     df["last_condition_trade_ts"] = df["dt"]
-    df["is_carved"] = True
-    for wallet in WALLETS:
-        rows_of = df.index[df["wallet"] == wallet]
-        df.loc[rows_of[2], "is_carved"] = False
-        df.loc[rows_of[-1], "is_carved"] = False
     return df
 
 
@@ -108,14 +93,14 @@ def fills():
 def flow_fills():
     base = pd.Timestamp("2025-11-01", tz="UTC")
     rows = [
-        # passes: in band, contrarian flow, uptick, carved
-        (0.20, -0.5, 1.0, 1.0, 10.0, True),
+        # passes: in band, contrarian flow, uptick
+        (0.20, -0.5, 1.0, 1.0, 10.0),
         # fails share
-        (0.20, 0.5, 1.0, 1.0, 20.0, True),
-        # fails price band
-        (0.80, -0.5, 1.0, 1.0, 30.0, True),
-        # passes nonstrict (share == thr) but fails strict uptick; not carved
-        (0.30, -0.1, 1.0, -1.0, 40.0, False),
+        (0.20, 0.5, 1.0, 1.0, 20.0),
+        # outside price band but contrarian flow
+        (0.80, -0.5, 1.0, 1.0, 30.0),
+        # passes nonstrict (share == thr) but fails strict uptick
+        (0.30, -0.1, 1.0, -1.0, 40.0),
     ]
     df = pd.DataFrame(
         {
@@ -127,15 +112,11 @@ def flow_fills():
             "usdc_all_60": [r[2] for r in rows],
             "price_chg_last_own": [r[3] for r in rows],
             "copyable_pnl": [r[4] for r in rows],
-            "copyable_pnl_limited": [r[4] / 2 for r in rows],
             "pnl": [r[4] for r in rows],
-            "pnl_limited": [r[4] / 2 for r in rows],
             "notional": 1.0,
             "position": 1.0,
-            "deployed_capital_frac": 1.0,
             "copyable_qty_5m_100": 1.0,
             "is_train": True,
-            "is_carved": [r[5] for r in rows],
         }
     )
     df["last_condition_trade_ts"] = df["dt"]
@@ -164,11 +145,9 @@ def decode(values):
     return values
 
 
-def test_payload_structure(frames, fills):
-    full, carved = frames
+def test_payload_structure(stats, fills):
     payload = build_payload(
-        full,
-        carved,
+        stats,
         variant="sports",
         eligible_wallets={"0xa", "0xb"},
         selected_wallets={"0xa"},
@@ -180,7 +159,6 @@ def test_payload_structure(frames, fills):
         {"key": "price", "label": "price band", "default": False},
         {"key": "size_share", "label": "size share", "default": False},
         {"key": "copyable", "label": "copyable qty > 0", "default": False},
-        {"key": "carved", "label": "carved fills only", "default": False},
     ]
     assert payload["filterDefaults"] == {
         "price_lo": 2.0,
@@ -191,12 +169,12 @@ def test_payload_structure(frames, fills):
     assert payload["presetsDropped"] == []
     assert payload["presets"] == VARIANT_FILTERS["sports"]
     assert payload["defaultAxes"] == {
-        "x": "buy_roi__full",
-        "y": "estimated_copyable_buy_sharpe__carved",
+        "x": "buy_roi",
+        "y": "estimated_copyable_buy_sharpe",
     }
 
     keys = {c["key"] for c in payload["columns"]}
-    assert {"buy_roi__full", "buy_roi__carved", "median_dt_days_ago__full"} <= keys
+    assert {"buy_roi", "buy_copyable_roi", "median_dt_days_ago"} <= keys
     assert len(payload["wallets"]) == len(WALLETS)
 
     rec = {w["wallet"]: w for w in payload["wallets"]}
@@ -204,41 +182,36 @@ def test_payload_structure(frames, fills):
     assert rec["0xa"]["strategy_selected"] is True
     assert rec["0xa"]["test_active"] is True
     assert rec["0xb"]["strategy_selected"] is False
-    assert rec["0xa"]["median_dt_days_ago__full"] > 0
+    assert rec["0xa"]["median_dt_days_ago"] > 0
 
 
-def test_payload_normalizes_infinities(frames):
-    full, carved = frames
-    full.loc[0, "buy_roi"] = np.inf
-    payload = build_payload(full, carved, variant="sports")
+def test_payload_normalizes_infinities(stats):
+    stats.loc[0, "buy_roi"] = np.inf
+    payload = build_payload(stats, variant="sports")
     rec = {w["wallet"]: w for w in payload["wallets"]}
-    assert rec["0xa"]["buy_roi__full"] is None
+    assert rec["0xa"]["buy_roi"] is None
 
 
-def test_presets_skip_all_nan_columns(frames):
-    full, carved = frames
-    full["num_markets"] = np.nan
-    payload = build_payload(full, carved, variant="sports")
-    assert "num_markets__full" not in payload["presets"]
-    assert "num_markets__full" in payload["presetsDropped"]
+def test_presets_skip_all_nan_columns(stats):
+    stats["num_markets"] = np.nan
+    payload = build_payload(stats, variant="sports")
+    assert "num_markets" not in payload["presets"]
+    assert "num_markets" in payload["presetsDropped"]
 
 
-def test_payload_rejects_unknown_variant(frames):
-    full, carved = frames
+def test_payload_rejects_unknown_variant(stats):
     with pytest.raises(ValueError):
-        build_payload(full, carved, variant="not-a-variant")
+        build_payload(stats, variant="not-a-variant")
 
 
-def test_build_payload_requires_wallet_column(frames):
-    full, carved = frames
+def test_build_payload_requires_wallet_column(stats):
     with pytest.raises(ValueError):
-        build_payload(full.drop(columns="wallet"), carved)
+        build_payload(stats.drop(columns="wallet"))
 
 
-def test_server_endpoints(frames, fills, tmp_path):
-    full, carved = frames
+def test_server_endpoints(stats, fills, tmp_path):
     handle = open_wallet_filter_explorer(
-        full, carved, fills=fills, out_dir=tmp_path, open_browser=False
+        stats, fills=fills, out_dir=tmp_path, open_browser=False
     )
     try:
         with urllib.request.urlopen(handle.url) as resp:
@@ -252,8 +225,7 @@ def test_server_endpoints(frames, fills, tmp_path):
 
         with post_json(
             handle.url + "pnl",
-            {"wallets": ["0xa"], "variants": ["pnl__full"], "exposure": False,
-             "carve": False},
+            {"wallets": ["0xa"], "filters": {}, "exposure": False},
         ) as resp:
             panel = json.loads(resp.read())
         assert panel["label"] == "0xa"
@@ -261,7 +233,7 @@ def test_server_endpoints(frames, fills, tmp_path):
         assert decode(panel["train"]["data"][0]["y"]) == pytest.approx([1.0, 2.0, 3.0])
         assert decode(panel["test"]["data"][0]["y"]) == pytest.approx([2.0, 4.0])
         names = trace_names(panel["train"])
-        assert "picked (wallet pnl (full), raw)" in names
+        assert "picked (wallet pnl, raw)" in names
         assert "picked (total)" not in names
 
         with pytest.raises(urllib.error.HTTPError) as exc:
@@ -271,44 +243,34 @@ def test_server_endpoints(frames, fills, tmp_path):
         handle.stop()
 
 
-def test_pnl_aggregate_and_variants(frames, fills, tmp_path):
-    full, carved = frames
+def test_pnl_aggregate(stats, fills, tmp_path):
     handle = open_wallet_filter_explorer(
-        full, carved, fills=fills, exposure_fracs=(0.5, 1.0),
-        out_dir=tmp_path, open_browser=False
+        stats, fills=fills, out_dir=tmp_path, open_browser=False
     )
     try:
         with post_json(
             handle.url + "pnl",
-            {"wallets": ["0xa", "0xb"],
-             "variants": ["pnl__full", "pnl__carved",
-                          "copyable_pnl__full", "copyable_pnl__carved"],
-             "exposure": True, "carve": True},
+            {"wallets": ["0xa", "0xb"], "filters": {}, "exposure": True},
         ) as resp:
             panel = json.loads(resp.read())
         assert panel["label"] == "picked (2)"
         train = panel["train"]
         raw = {t["name"]: decode(t["y"]) for t in train["data"]}
-        assert raw["picked (wallet pnl (full), raw)"] == pytest.approx([2.0, 4.0, 6.0])
-        assert raw["picked (wallet pnl (carved), raw)"] == pytest.approx([2.0, 4.0, 4.0])
-        assert raw["picked (copyable pnl (full), raw)"] == pytest.approx([1.0, 2.0, 3.0])
-        assert raw["picked (copyable pnl (carved), raw)"] == pytest.approx([1.0, 2.0, 2.0])
+        assert raw["picked (wallet pnl, raw)"] == pytest.approx([2.0, 4.0, 6.0])
+        assert raw["picked (copyable pnl, raw)"] == pytest.approx([1.0, 2.0, 3.0])
         names = trace_names(train)
         assert "picked (total)" not in names
-        assert "picked (wallet pnl (full), frac 0.5)" in names
-        assert "picked (copyable pnl (carved), frac 0.5)" in names
         exposures = [t for t in train["data"] if t.get("yaxis") == "y2"]
         assert exposures and all("exposure" in t["name"] for t in exposures)
     finally:
         handle.stop()
 
 
-def test_pnl_checkable_fill_filters(frames, fills, tmp_path):
-    full, carved = frames
+def test_pnl_checkable_fill_filters(stats, fills, tmp_path):
     handle = open_wallet_filter_explorer(
-        full, carved, fills=fills, out_dir=tmp_path, open_browser=False
+        stats, fills=fills, out_dir=tmp_path, open_browser=False
     )
-    base = {"wallets": ["0xa"], "exposure": False, "carve": False}
+    base = {"wallets": ["0xa"], "exposure": False}
     try:
         with post_json(handle.url + "pnl", dict(base, filters={})) as resp:
             panel = json.loads(resp.read())
@@ -326,29 +288,15 @@ def test_pnl_checkable_fill_filters(frames, fills, tmp_path):
         assert raw["picked (wallet pnl (filtered), raw)"] == pytest.approx([1.0, 2.0])
         assert raw["picked (copyable pnl (filtered), raw)"] == pytest.approx([0.5, 1.0])
         assert panel["filters"] == ["size_share"]
-
-        with post_json(
-            handle.url + "pnl",
-            dict(base, filters={"carved": True}),
-        ) as resp:
-            panel = json.loads(resp.read())
-        train = {t["name"]: decode(t["y"]) for t in panel["train"]["data"]}
-        test = {t["name"]: decode(t["y"]) for t in panel["test"]["data"]}
-        assert train["picked (wallet pnl (filtered), raw)"] == pytest.approx([1.0, 2.0])
-        assert train["picked (copyable pnl (filtered), raw)"] == pytest.approx([0.5, 1.0])
-        assert test["picked (wallet pnl (filtered), raw)"] == pytest.approx([2.0])
-        assert test["picked (copyable pnl (filtered), raw)"] == pytest.approx([1.0])
-        assert panel["filters"] == ["carved"]
     finally:
         handle.stop()
 
 
-def test_pnl_checkable_flow_filter(frames, flow_fills, tmp_path):
-    full, carved = frames
+def test_pnl_checkable_flow_filter(stats, flow_fills, tmp_path):
     handle = open_wallet_filter_explorer(
-        full, carved, fills=flow_fills, out_dir=tmp_path, open_browser=False
+        stats, fills=flow_fills, out_dir=tmp_path, open_browser=False
     )
-    base = {"wallets": ["0xa"], "exposure": False, "carve": False}
+    base = {"wallets": ["0xa"], "exposure": False}
     try:
         with post_json(
             handle.url + "pnl",
@@ -373,18 +321,14 @@ def test_pnl_checkable_flow_filter(frames, flow_fills, tmp_path):
         handle.stop()
 
 
-def test_payload_flow_controls(frames, flow_fills):
-    full, carved = frames
+def test_payload_flow_controls(stats, flow_fills):
     payload = build_payload(
-        full,
-        carved,
+        stats,
         fills=flow_fills,
-        exposure_fracs=(0.5,),
         flow_price_lo=0.25,
         flow_price_hi=0.45,
         flow_share_thr=-0.05,
         flow_strict=True,
-        flow_carve_frac=0.25,
     )
     assert payload["flowAvailable"] is True
     assert payload["flowDefaults"] == {
@@ -392,14 +336,12 @@ def test_payload_flow_controls(frames, flow_fills):
         "price_hi": 0.45,
         "share_thr": -0.05,
         "strict": True,
-        "carve_frac": 0.25,
     }
-    assert payload["flowCarveFracs"] == [0.25, 0.5]
+    assert "flowCarveFracs" not in payload
     assert payload["pnlFilters"] == [
         {"key": "price", "label": "price band", "default": False},
         {"key": "flow", "label": "flow share", "default": False},
         {"key": "copyable", "label": "copyable qty > 0", "default": False},
-        {"key": "carved", "label": "carved fills only", "default": False},
     ]
     assert payload["filterDefaults"] == {
         "price_lo": 0.2,
@@ -409,80 +351,33 @@ def test_payload_flow_controls(frames, flow_fills):
     }
 
     plain = build_payload(
-        full,
-        carved,
+        stats,
         fills=flow_fills.drop(
             columns=["flow_own_usdc_60", "usdc_all_60", "price_chg_last_own"]
         ),
     )
     assert plain["flowAvailable"] is False
-    assert [f["key"] for f in plain["pnlFilters"]] == [
-        "price", "copyable", "carved"
-    ]
+    assert [f["key"] for f in plain["pnlFilters"]] == ["price", "copyable"]
     assert plain["filterDefaults"] == {"price_lo": 0.2, "price_hi": 0.8}
 
 
-def test_pnl_flow_filter_variants(frames, flow_fills, tmp_path):
-    full, carved = frames
+def test_pnl_rejects_bad_requests(stats, fills, tmp_path):
     handle = open_wallet_filter_explorer(
-        full, carved, fills=flow_fills, exposure_fracs=(0.5,),
-        flow_carve_frac=0.5, out_dir=tmp_path, open_browser=False
-    )
-    base = {"wallets": ["0xa"], "exposure": False, "carve": False,
-            "carveFrac": 0.5}
-    try:
-        with post_json(
-            handle.url + "pnl",
-            dict(base, variants=["copyable_pnl_flow__full"],
-                 flow={"price_lo": 0.1, "price_hi": 0.5, "share_thr": -0.1}),
-        ) as resp:
-            panel = json.loads(resp.read())
-        raw = {t["name"]: decode(t["y"]) for t in panel["train"]["data"]}
-        assert raw["picked (copyable pnl (flow) (full), raw)"] == pytest.approx(
-            [10.0, 10.0, 10.0, 50.0]
-        )
-
-        with post_json(
-            handle.url + "pnl",
-            dict(base, variants=["copyable_pnl_flow__full"],
-                 flow={"price_lo": 0.1, "price_hi": 0.5, "share_thr": -0.1,
-                       "strict": True}),
-        ) as resp:
-            panel = json.loads(resp.read())
-        raw = {t["name"]: decode(t["y"]) for t in panel["train"]["data"]}
-        assert raw["picked (copyable pnl (flow) (full), raw)"] == pytest.approx(
-            [10.0, 10.0, 10.0, 10.0]
-        )
-
-        with post_json(
-            handle.url + "pnl",
-            dict(base, variants=["copyable_pnl_flow__carved"], carve=True,
-                 flow={"price_lo": 0.1, "price_hi": 0.5, "share_thr": -0.1}),
-        ) as resp:
-            panel = json.loads(resp.read())
-        raw = {t["name"]: decode(t["y"]) for t in panel["train"]["data"]}
-        assert raw["picked (copyable pnl (flow) (carved), raw)"] == pytest.approx(
-            [10.0, 10.0, 10.0, 10.0]
-        )
-    finally:
-        handle.stop()
-
-
-def test_pnl_rejects_bad_flow_requests(frames, flow_fills, tmp_path):
-    full, carved = frames
-    handle = open_wallet_filter_explorer(
-        full, carved, fills=flow_fills, out_dir=tmp_path, open_browser=False
+        stats, fills=fills, out_dir=tmp_path, open_browser=False
     )
     try:
         for payload, match in [
-            ({"wallets": ["0xa"], "variants": ["copyable_pnl_flow__full"]}, "flow"),
-            ({"wallets": ["0xa"], "variants": ["copyable_pnl_flow__full"],
-              "flow": {"price_lo": 0.9, "price_hi": 0.1}}, "price_lo"),
-            ({"wallets": ["0xa"], "variants": ["copyable_pnl_flow__full"],
-              "flow": {"price_lo": "x"}}, "numbers"),
-            ({"wallets": ["0xa"], "variants": ["copyable_pnl_flow__full"],
-              "flow": {"price_lo": 0.1, "price_hi": 0.5}, "carveFrac": "x"},
-             "carveFrac"),
+            ({"wallets": [], "filters": {}}, "wallets"),
+            ({"wallets": "0xa", "filters": {}}, "wallets"),
+            ({"wallets": ["0xa"], "filters": "x"}, "filters must be an object"),
+            ({"wallets": ["0xa"], "filters": {"price": "x"}},
+             "price filter must be an object"),
+            ({"wallets": ["0xa"], "filters": {"price": {"lo": 2, "hi": 1}}},
+             "price lo"),
+            ({"wallets": ["0xa"], "filters": {"size_share": {"max": "x"}}},
+             "size_share"),
+            ({"wallets": ["0xa"], "filters": {"flow": {"share_thr": "x"}}},
+             "flow threshold"),
         ]:
             with pytest.raises(urllib.error.HTTPError) as exc:
                 post_json(handle.url + "pnl", payload)
@@ -492,64 +387,9 @@ def test_pnl_rejects_bad_flow_requests(frames, flow_fills, tmp_path):
         handle.stop()
 
 
-def test_pnl_rejects_bad_requests(frames, fills, tmp_path):
-    full, carved = frames
+def test_pnl_disabled_without_fills(stats, tmp_path):
     handle = open_wallet_filter_explorer(
-        full, carved, fills=fills, out_dir=tmp_path, open_browser=False
-    )
-    try:
-        for payload, match in [
-            ({"wallets": [], "variants": ["pnl__full"]}, "wallets"),
-            ({"wallets": ["0xa"], "variants": []}, "variants"),
-            ({"wallets": ["0xa"], "variants": ["nope"]}, "unknown"),
-            ({"wallets": ["0xa"], "variants": ["pnl"]}, "unknown"),
-            ({"wallets": "0xa", "variants": ["pnl__full"]}, "wallets"),
-        ]:
-            with pytest.raises(urllib.error.HTTPError) as exc:
-                post_json(handle.url + "pnl", payload)
-            assert exc.value.code == 400
-            assert match in exc.value.read().decode()
-    finally:
-        handle.stop()
-
-
-def test_pnl_full_only_without_is_carved(frames, fills, tmp_path):
-    full, carved = frames
-    handle = open_wallet_filter_explorer(
-        full, carved, fills=fills.drop(columns="is_carved"),
-        out_dir=tmp_path, open_browser=False
-    )
-    try:
-        with urllib.request.urlopen(handle.url + "data") as resp:
-            data = json.loads(resp.read())
-        assert [f["key"] for f in data["pnlFilters"]] == [
-            "price", "size_share", "copyable"
-        ]
-        assert data["filterDefaults"] == {
-            "price_lo": 2.0,
-            "price_hi": 2.0,
-            "size_share_max": 0.2,
-        }
-        with post_json(
-            handle.url + "pnl",
-            {"wallets": ["0xa"], "variants": ["pnl__full"]},
-        ) as resp:
-            panel = json.loads(resp.read())
-        assert decode(panel["train"]["data"][0]["y"]) == pytest.approx([1.0, 2.0, 3.0])
-        with pytest.raises(urllib.error.HTTPError) as exc:
-            post_json(
-                handle.url + "pnl",
-                {"wallets": ["0xa"], "variants": ["pnl__carved"]},
-            )
-        assert exc.value.code == 400
-    finally:
-        handle.stop()
-
-
-def test_pnl_disabled_without_fills(frames, tmp_path):
-    full, carved = frames
-    handle = open_wallet_filter_explorer(
-        full, carved, out_dir=tmp_path, open_browser=False
+        stats, out_dir=tmp_path, open_browser=False
     )
     try:
         with urllib.request.urlopen(handle.url + "data") as resp:
@@ -557,21 +397,20 @@ def test_pnl_disabled_without_fills(frames, tmp_path):
         assert data["pnlFilters"] == []
         assert data["filterDefaults"] == {}
         with pytest.raises(urllib.error.HTTPError) as exc:
-            post_json(handle.url + "pnl", {"wallets": ["0xa"], "variants": ["pnl"]})
+            post_json(handle.url + "pnl", {"wallets": ["0xa"], "filters": {}})
         assert exc.value.code == 400
     finally:
         handle.stop()
 
 
-def test_selection_roundtrip(frames, fills, tmp_path):
-    full, carved = frames
+def test_selection_roundtrip(stats, fills, tmp_path):
     handle = open_wallet_filter_explorer(
-        full, carved, fills=fills, out_dir=tmp_path, open_browser=False
+        stats, fills=fills, out_dir=tmp_path, open_browser=False
     )
     selection = {
         "variant": "sports",
         "filters": {
-            "buy_roi__full": {"min": 0.05, "max": None, "nanOk": False},
+            "buy_roi": {"min": 0.05, "max": None, "nanOk": False},
         },
         "membership": {
             "eligible": True,
@@ -587,7 +426,6 @@ def test_selection_roundtrip(frames, fills, tmp_path):
             "share_thr": -0.1,
             "strict": False,
         },
-        "carveFrac": 0.5,
     }
     try:
         req = urllib.request.Request(
@@ -603,13 +441,13 @@ def test_selection_roundtrip(frames, fills, tmp_path):
         assert load_selection(handle.selection_path) == selection
         assert handle.selection_path.name == "wallet_filter_selection_sports.json"
 
-        df = apply_selection_filters(selection, full, carved, fills=fills)
+        df = apply_selection_filters(selection, stats, fills=fills)
         assert list(df["wallet"]) == ["0xb", "0xc"]
         assert list(df["picked"]) == [True, False]
 
         mismatched = dict(selection, passing=["0xa"])
         with pytest.raises(ValueError, match="do not match|does not match"):
-            apply_selection_filters(mismatched, full, carved, fills=fills)
+            apply_selection_filters(mismatched, stats, fills=fills)
     finally:
         handle.stop()
 

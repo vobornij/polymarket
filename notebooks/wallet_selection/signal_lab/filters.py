@@ -100,20 +100,16 @@ COPY_DEFAULT = WalletFilter("copy_default", _select_copy_default)
 # ---------------------------------------------------------------------------
 # Strategy-selection filter (stage1_wallet_strategy_selection)
 # base_mask + copyable_mask for the Weather, Politics and Sports variants,
-# ported verbatim from the stage1_wallet notebook. Rule constants are inlined
-# in each variant's mask function.
+# ported from the stage1_wallet notebook. Rule constants are inlined in each
+# variant's mask function.
 #
-# Each mask takes two stat frames from stage1: ``candidates`` (full /
-# non-filtered stats) and ``candidates_carved`` (exposure-carved stats).
-# Weather and politics rules evaluate on the full stats; the sports variant
-# keeps its basic pnl / roi rules on the full stats and evaluates all other
-# rules on the carved stats (keyed by wallet, reindexed onto candidates).
+# Every mask takes a single wallet-stat frame (``candidates``) computed on the
+# full (uncarved) BUY train stream.
 # ---------------------------------------------------------------------------
 
 
 def _weather_strategy_masks(
     candidates: pd.DataFrame,
-    candidates_carved: pd.DataFrame,
 ) -> tuple[pd.Series, pd.Series]:
     """Weather base + copyable masks (expects ``buy_copyable_roi`` prepped)."""
     base_mask = (
@@ -141,7 +137,6 @@ def _weather_strategy_masks(
 
 def _politics_strategy_masks(
     candidates: pd.DataFrame,
-    candidates_carved: pd.DataFrame,
 ) -> tuple[pd.Series, pd.Series]:
     """Politics base + copyable masks (expects ``buy_copyable_roi`` prepped)."""
     base_mask = (
@@ -173,93 +168,54 @@ def _politics_strategy_masks(
 
 def _sports_strategy_masks(
     candidates: pd.DataFrame,
-    candidates_carved: pd.DataFrame,
 ) -> tuple[pd.Series, pd.Series]:
-    """Sports (Esports) base + copyable masks (expects ``buy_copyable_roi`` prepped).
-
-    Basic pnl / roi rules evaluate on the full (non-filtered) stats
-    (``candidates``); all other rules on the exposure-carved stats
-    (``candidates_carved``). Carved rules are keyed by wallet and reindexed
-    onto ``candidates``; wallets without carved stats fail them (NaN
-    comparisons are False).
-    """
-    # base_mask = (
-    #     (candidates["buy_roi"] >= 0.07)
-    #     & (candidates["buy_pnl"] >= 1_000)
-    #     & (candidates["num_markets"] >= 20)
-    #     & (candidates["num_buckets"] >= 100)
-    #     & (candidates["max_drawdown_to_pnl"] <= 0.3)
-    #     & (candidates["market_pnl_hhi"].fillna(0.20) < 0.3)
-    #     & (candidates["total_notional"] >= 5_000)
-    #     & (candidates["estimated_buy_sharpe"] >= 3)
-    #     & (candidates["buy_copyable_pnl"] > 500)
-    # )
-    # basic pnl / roi — full (non-filtered) stats
+    """Sports base + copyable masks (expects ``buy_copyable_roi`` prepped)."""
     base_mask = (
-        (candidates["buy_roi"] >= 0.04)
+        (candidates["buy_roi"] >= 0.05)
         & (candidates["buy_pnl"] >= 1_000)
         & (candidates["total_pnl"] >= 4_000)
-        & (candidates['num_markets'] >= 30)
-        & (candidates['num_buckets'] >= 50)
+        & (candidates["num_markets"] >= 30)
+        & (candidates["num_buckets"] >= 50)
         & (candidates["market_pnl_hhi"].fillna(0.50) < 0.2)
         & (candidates["estimated_buy_sharpe"] >= 3)
         & (candidates["max_drawdown_to_pnl"] <= 0.2)
+        & (candidates["total_notional"] >= 5_000)
+        & (candidates["buy_copyable_pnl"] > 500)
     )
-    # other filters — exposure-carved stats
-    carved = candidates_carved.set_index("wallet")
-    carved_mask = (
-        (carved["buy_roi"] >= 0.05)
-        # & (carved["num_buckets"] >= 10)
-        # & (carved["max_drawdown_to_pnl"] <= 0.2)
-        # & (carved["market_pnl_hhi"].fillna(0.50) < 0.2)
-        & (carved["total_notional"] >= 5_000)
-        & (carved["buy_copyable_pnl"] > 500)
-    )
-    base_mask &= candidates["wallet"].isin(carved_mask.index[carved_mask])
     eligible = candidates.loc[base_mask]
     if eligible.empty:
         return base_mask, pd.Series(False, index=eligible.index)
     copyable_mask = (
-        (eligible["wallet"].map(carved["buy_copyable_pnl"]) > 500)
-        & (eligible["wallet"].map(carved["buy_copyable_roi"]) >= 0.07)
-        # & (eligible["wallet"].map(carved["max_drawdown_to_pnl"]) <= 0.2)
-        # & (eligible["wallet"].map(carved["estimated_copyable_buy_sharpe"]) >= 4)
-        & (eligible["wallet"].map(carved["max_copyable_drawdown_to_copyable_pnl"]) <= 0.3)
-        # & (eligible["wallet"].map(carved["copyable_pnl_similarity"]) >= 0.6)
-    ) 
+        (eligible["buy_copyable_pnl"] > 500)
+        & (eligible["buy_copyable_roi"] >= 0.07)
+        & (eligible["max_copyable_drawdown_to_copyable_pnl"] <= 0.3)
+    )
     return base_mask, copyable_mask
 
 
 def _strategy_masks(
     candidates: pd.DataFrame,
-    candidates_carved: pd.DataFrame,
     variant: str = "weather",
 ) -> tuple[pd.Series, pd.Series]:
     """``(base_mask, copyable_mask)`` for the strategy-selection variant.
 
-    ``candidates`` holds the full (non-filtered) wallet stats,
-    ``candidates_carved`` the exposure-carved stats; ``buy_copyable_roi`` is
-    prepped on both. ``variant`` is one of the named variants — weather,
-    politics or sports — each dispatched to its own mask path with its rule
-    constants inlined.
+    ``candidates`` holds the full (non-filtered) wallet stats and
+    ``buy_copyable_roi`` is prepped on it. ``variant`` is one of the named
+    variants — weather, politics or sports — each dispatched to its own mask
+    path with its rule constants inlined.
     """
     candidates = candidates.copy()
     candidates["buy_copyable_roi"] = (
         candidates["buy_copyable_pnl"]
         / candidates["buy_copyable_notional"].replace(0, np.nan)
     )
-    candidates_carved = candidates_carved.copy()
-    candidates_carved["buy_copyable_roi"] = (
-        candidates_carved["buy_copyable_pnl"]
-        / candidates_carved["buy_copyable_notional"].replace(0, np.nan)
-    )
 
     if variant == "weather":
-        return _weather_strategy_masks(candidates, candidates_carved)
+        return _weather_strategy_masks(candidates)
     elif variant == "politics":
-        return _politics_strategy_masks(candidates, candidates_carved)
+        return _politics_strategy_masks(candidates)
     elif variant == "sports":
-        return _sports_strategy_masks(candidates, candidates_carved)
+        return _sports_strategy_masks(candidates)
     raise ValueError(
         f"Unknown strategy-selection variant {variant!r}; expected one of "
         f"('weather', 'politics', 'sports')"
@@ -268,12 +224,11 @@ def _strategy_masks(
 
 def select_strategy_selection(
     candidates: pd.DataFrame,
-    candidates_carved: pd.DataFrame,
     variant: str = "weather",
 ) -> set[str]:
     """Copyable wallets from stage1_wallet_strategy_selection."""
     base_mask, copyable_mask = _strategy_masks(
-        candidates, candidates_carved, variant=variant
+        candidates, variant=variant
     )
     eligible = candidates.loc[base_mask]
     return set(eligible.loc[copyable_mask, "wallet"])
@@ -281,11 +236,10 @@ def select_strategy_selection(
 
 def select_strategy_eligible(
     candidates: pd.DataFrame,
-    candidates_carved: pd.DataFrame,
     variant: str = "weather",
 ) -> set[str]:
     """Base-eligible wallets from stage1_wallet_strategy_selection."""
-    base_mask, _ = _strategy_masks(candidates, candidates_carved, variant=variant)
+    base_mask, _ = _strategy_masks(candidates, variant=variant)
     return set(candidates.loc[base_mask, "wallet"])
 
 
@@ -296,9 +250,7 @@ def make_strategy_selection(variant: str = "weather") -> WalletFilter:
         wallet_metrics: pd.DataFrame,
         hold_metrics: pd.DataFrame,
     ) -> set[str]:
-        # signal_lab metrics are computed on the uncarved stream, so the
-        # carved frame is the same wallet_metrics (full == carved there).
-        return select_strategy_selection(wallet_metrics, wallet_metrics, variant=variant)
+        return select_strategy_selection(wallet_metrics, variant=variant)
 
     name = (
         "strategy_selection"
